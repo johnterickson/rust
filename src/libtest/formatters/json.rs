@@ -1,5 +1,7 @@
 use super::*;
 
+use std::time::Duration;
+
 pub(crate) struct JsonFormatter<T> {
     out: OutputLocation<T>,
 }
@@ -21,19 +23,24 @@ impl<T: Write> JsonFormatter<T> {
         ty: &str,
         name: &str,
         evt: &str,
+        duration: Option<Duration>,
         extra: Option<String>,
     ) -> io::Result<()> {
-        if let Some(extras) = extra {
-            self.write_message(&*format!(
-                r#"{{ "type": "{}", "name": "{}", "event": "{}", {} }}"#,
-                ty, name, evt, extras
-            ))
-        } else {
-            self.write_message(&*format!(
-                r#"{{ "type": "{}", "name": "{}", "event": "{}" }}"#,
-                ty, name, evt
-            ))
+        write!(self.out, r#"{{ "type": "{}", "name": "{}", "event": "{}""#, ty, name, evt)?;
+
+        if let Some(duration) = duration {
+            let duration_ms : f64 =
+                1000.0_f64 * duration.as_secs() as f64
+                + duration.subsec_nanos() as f64 / 1000000.0;
+            write!(self.out, r#", "duration": {}"#, duration_ms)?;
         }
+
+        if let Some(extras) = extra {
+            write!(self.out, ", {}", extras)?;
+        }
+
+        write!(self.out, "}}")?;
+        self.out.write_all(b"\n")
     }
 }
 
@@ -57,10 +64,12 @@ impl<T: Write> OutputFormatter for JsonFormatter<T> {
         desc: &TestDesc,
         result: &TestResult,
         stdout: &[u8],
+        duration: Duration
     ) -> io::Result<()> {
-        match *result {
-            TrOk => self.write_event("test", desc.name.as_slice(), "ok", None),
+        
 
+        match *result {
+            TrOk => self.write_event("test", desc.name.as_slice(), "ok", Some(duration), None),
             TrFailed => {
                 let extra_data = if stdout.len() > 0 {
                     Some(format!(
@@ -71,20 +80,21 @@ impl<T: Write> OutputFormatter for JsonFormatter<T> {
                     None
                 };
 
-                self.write_event("test", desc.name.as_slice(), "failed", extra_data)
+                self.write_event("test", desc.name.as_slice(), "failed", Some(duration), extra_data)
             }
 
             TrFailedMsg(ref m) => self.write_event(
                 "test",
                 desc.name.as_slice(),
                 "failed",
+                Some(duration),
                 Some(format!(r#""message": "{}""#, EscapedString(m))),
             ),
 
-            TrIgnored => self.write_event("test", desc.name.as_slice(), "ignored", None),
+            TrIgnored => self.write_event("test", desc.name.as_slice(), "ignored", None, None),
 
             TrAllowedFail => {
-                self.write_event("test", desc.name.as_slice(), "allowed_failure", None)
+                self.write_event("test", desc.name.as_slice(), "allowed_failure", Some(duration), None)
             }
 
             TrBench(ref bs) => {

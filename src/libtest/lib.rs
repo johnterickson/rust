@@ -888,9 +888,9 @@ pub fn run_tests_console(opts: &TestOpts, tests: Vec<TestDescAndFn>) -> io::Resu
             TeFilteredOut(filtered_out) => Ok(st.filtered_out = filtered_out),
             TeWait(ref test) => out.write_test_start(test),
             TeTimeout(ref test) => out.write_timeout(test),
-            TeResult(test, result, stdout) => {
+            TeResult(test, result, stdout, duration) => {
                 st.write_log_result(&test, &result)?;
-                out.write_result(&test, &result, &*stdout)?;
+                out.write_result(&test, &result, &*stdout, duration)?;
                 match result {
                     TrOk => {
                         st.passed += 1;
@@ -1053,12 +1053,12 @@ fn stdout_isatty() -> bool {
 pub enum TestEvent {
     TeFiltered(Vec<TestDesc>),
     TeWait(TestDesc),
-    TeResult(TestDesc, TestResult, Vec<u8>),
+    TeResult(TestDesc, TestResult, Vec<u8>, Duration),
     TeTimeout(TestDesc),
     TeFilteredOut(usize),
 }
 
-pub type MonitorMsg = (TestDesc, TestResult, Vec<u8>);
+pub type MonitorMsg = (TestDesc, TestResult, Vec<u8>, Duration);
 
 struct Sink(Arc<Mutex<Vec<u8>>>);
 impl Write for Sink {
@@ -1154,8 +1154,8 @@ where
             let test = remaining.pop().unwrap();
             callback(TeWait(test.desc.clone()))?;
             run_test(opts, !opts.run_tests, test, tx.clone(), Concurrent::No);
-            let (test, result, stdout) = rx.recv().unwrap();
-            callback(TeResult(test, result, stdout))?;
+            let (test, result, stdout, duration) = rx.recv().unwrap();
+            callback(TeResult(test, result, stdout, duration))?;
         }
     } else {
         while pending > 0 || !remaining.is_empty() {
@@ -1184,10 +1184,10 @@ where
                 }
             }
 
-            let (desc, result, stdout) = res.unwrap();
+            let (desc, result, stdout, duration) = res.unwrap();
             running_tests.remove(&desc);
 
-            callback(TeResult(desc, result, stdout))?;
+            callback(TeResult(desc, result, stdout, duration))?;
             pending -= 1;
         }
     }
@@ -1197,8 +1197,8 @@ where
         for b in filtered_benchs {
             callback(TeWait(b.desc.clone()))?;
             run_test(opts, false, b, tx.clone(), Concurrent::No);
-            let (test, result, stdout) = rx.recv().unwrap();
-            callback(TeResult(test, result, stdout))?;
+            let (test, result, stdout, duration) = rx.recv().unwrap();
+            callback(TeResult(test, result, stdout, duration))?;
         }
     }
     Ok(())
@@ -1423,7 +1423,7 @@ pub fn run_test(
         && desc.should_panic != ShouldPanic::No;
 
     if force_ignore || desc.ignore || ignore_because_panic_abort {
-        monitor_ch.send((desc, TrIgnored, Vec::new())).unwrap();
+        monitor_ch.send((desc, TrIgnored, Vec::new(), Duration::from_secs(0))).unwrap();
         return;
     }
 
@@ -1449,7 +1449,9 @@ pub fn run_test(
                 None
             };
 
+            let start = Instant::now();
             let result = catch_unwind(AssertUnwindSafe(testfn));
+            let duration = Instant::now() - start;
 
             if let Some((printio, panicio)) = oldio {
                 io::set_print(printio);
@@ -1459,7 +1461,7 @@ pub fn run_test(
             let test_result = calc_result(&desc, result);
             let stdout = data.lock().unwrap().to_vec();
             monitor_ch
-                .send((desc.clone(), test_result, stdout))
+                .send((desc.clone(), test_result, stdout, duration))
                 .unwrap();
         };
 
@@ -1701,6 +1703,7 @@ pub mod bench {
     use std::io;
     use std::panic::{catch_unwind, AssertUnwindSafe};
     use std::sync::{Arc, Mutex};
+    use std::time::Duration;
 
     pub fn benchmark<F>(desc: TestDesc, monitor_ch: Sender<MonitorMsg>, nocapture: bool, f: F)
     where
@@ -1757,7 +1760,7 @@ pub mod bench {
         };
 
         let stdout = data.lock().unwrap().to_vec();
-        monitor_ch.send((desc, test_result, stdout)).unwrap();
+        monitor_ch.send((desc, test_result, stdout, Duration::from_secs(0))).unwrap();
     }
 
     pub fn run_once<F>(f: F)
