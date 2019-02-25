@@ -26,7 +26,12 @@ impl<T: Write> JsonFormatter<T> {
         duration: Option<Duration>,
         extra: Option<String>,
     ) -> io::Result<()> {
-        write!(self.out, r#"{{ "type": "{}", "name": "{}", "event": "{}""#, ty, name, evt)?;
+        write!(
+            self.out,
+            r#"{{ "type": "{}", "name": "{}", "event": "{}""#,
+            ty,
+            EscapedString(name),
+            EscapedString(evt))?;
 
         if let Some(duration) = duration {
             let duration_ms : f64 =
@@ -55,7 +60,7 @@ impl<T: Write> OutputFormatter for JsonFormatter<T> {
     fn write_test_start(&mut self, desc: &TestDesc) -> io::Result<()> {
         self.write_message(&*format!(
             r#"{{ "type": "test", "event": "started", "name": "{}" }}"#,
-            desc.name
+            EscapedString(desc.name.as_slice())
         ))
     }
 
@@ -66,8 +71,6 @@ impl<T: Write> OutputFormatter for JsonFormatter<T> {
         stdout: &[u8],
         duration: Duration
     ) -> io::Result<()> {
-        
-
         match *result {
             TrOk => self.write_event("test", desc.name.as_slice(), "ok", Some(duration), None),
             TrFailed => {
@@ -123,7 +126,7 @@ impl<T: Write> OutputFormatter for JsonFormatter<T> {
     fn write_timeout(&mut self, desc: &TestDesc) -> io::Result<()> {
         self.write_message(&*format!(
             r#"{{ "type": "test", "event": "timeout", "name": "{}" }}"#,
-            desc.name
+            EscapedString(desc.name.as_slice())
         ))
     }
 
