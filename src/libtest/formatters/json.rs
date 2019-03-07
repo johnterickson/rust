@@ -97,7 +97,12 @@ impl<T: Write> OutputFormatter for JsonFormatter<T> {
             TrIgnored => self.write_event("test", desc.name.as_slice(), "ignored", None, None),
 
             TrAllowedFail => {
-                self.write_event("test", desc.name.as_slice(), "allowed_failure", Some(duration), None)
+                self.write_event(
+                    "test",
+                    desc.name.as_slice(),
+                    "allowed_failure",
+                    Some(duration),
+                    None)
             }
 
             TrBench(ref bs) => {
@@ -217,5 +222,13 @@ impl<S: AsRef<str>> ::std::fmt::Display for EscapedString<S> {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    pub fn escape_test_name() {
+        unimplemented!();
     }
 }
