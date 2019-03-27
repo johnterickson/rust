@@ -332,19 +332,19 @@ jobs:
 
   - template: steps/show-disk-usage.yml
 
-  # - task: DownloadPipelineArtifact@1
-  #   inputs:
-  #     artifactName: $(ARTIFACT_NAME)
-  #     downloadPath: $(System.DefaultWorkingDirectory)
   - task: DownloadPipelineArtifact@1
     inputs:
       artifactName: $(ARTIFACT_NAME)
       downloadPath: $(System.DefaultWorkingDirectory)
-      buildType: specific
-      project: rust
-      pipeline: 8
-      buildVersionToDownload: specific
-      buildId: 161
+  # - task: DownloadPipelineArtifact@1
+  #   inputs:
+  #     artifactName: $(ARTIFACT_NAME)
+  #     downloadPath: $(System.DefaultWorkingDirectory)
+  #     buildType: specific
+  #     project: rust
+  #     pipeline: 8
+  #     buildVersionToDownload: specific
+  #     buildId: 161
 
   # - template: steps/macos.yml 
   - template: steps/show-disk-usage.yml
