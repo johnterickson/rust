@@ -126,6 +126,8 @@ jobs:
   pool:
     vmImage: macos-10.13
   steps:
+  - checkout: self
+    fetchDepth: 2
   - template: steps/macos.yml  
   strategy:
     matrix:

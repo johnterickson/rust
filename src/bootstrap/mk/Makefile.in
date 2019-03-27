@@ -14,9 +14,10 @@ endif
 
 BOOTSTRAP := $(CFG_PYTHON) $(CFG_SRC_DIR)src/bootstrap/bootstrap.py
 
-all:
+build:
 	$(Q)$(BOOTSTRAP) build $(BOOTSTRAP_ARGS)
-	$(Q)$(BOOTSTRAP) doc $(BOOTSTRAP_ARGS)
+
+all: build doc
 
 help:
 	$(Q)echo 'Welcome to the rustbuild build system!'
@@ -80,10 +81,20 @@ TESTS_IN_2 := \
 	src/test/run-pass-fulldeps \
 	src/tools/linkchecker
 
+MIN_TEST := \
+	src/test/debuginfo
+
 ci-subset-1:
 	$(Q)$(BOOTSTRAP) test $(TESTS_IN_2:%=--exclude %)
 ci-subset-2:
 	$(Q)$(BOOTSTRAP) test $(TESTS_IN_2)
 
+ci-test-prepare: 
+	$(Q)$(BOOTSTRAP) test $(MIN_TEST)
+
+ci-resume-subset-1:
+	$(Q)$(BOOTSTRAP) test $(TESTS_IN_2:%=--exclude %)
+ci-resume-subset-2:
+	$(Q)$(BOOTSTRAP) test $(TESTS_IN_2)
 
 .PHONY: dist
