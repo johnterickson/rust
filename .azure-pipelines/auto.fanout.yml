@@ -317,7 +317,7 @@ jobs:
 #         SCRIPT: make ci-test-prepare
 
 - job: macOS_test
-  # dependsOn: macOS_build
+  dependsOn: macOS_build
   timeoutInMinutes: 600
   variables:
     TAR_COMMAND: gtar
