@@ -479,3 +479,13 @@ jobs:
         NO_DEBUG_ASSERTIONS: 1
         ARTIFACT_NAME: x86_64-apple-build
         SCRIPT: make ci-resume-subset-F
+      x86_64-apple-G:
+        RUST_CHECK_TARGET: check
+        RUST_CONFIGURE_ARGS: --build=x86_64-apple-darwin --enable-sanitizers --enable-profiler --set rust.jemalloc
+        RUSTC_RETRY_LINKER_ON_SEGFAULT: 1
+        MACOSX_DEPLOYMENT_TARGET: 10.8
+        MACOSX_STD_DEPLOYMENT_TARGET: 10.7
+        NO_LLVM_ASSERTIONS: 1
+        NO_DEBUG_ASSERTIONS: 1
+        ARTIFACT_NAME: x86_64-apple-build
+        SCRIPT: make ci-resume-subset-G
