@@ -98,7 +98,6 @@ ci-resume-subset-2:
 	$(Q)$(BOOTSTRAP) test $(TESTS_IN_2)
 
 TESTS_IN_B := \
-	src/test/ui \
 	src/test/compile-fail \
 	src/tools/linkchecker
 
@@ -110,13 +109,32 @@ TESTS_IN_D := \
 	src/test/rustdoc \
 	src/test/pretty
 
+TESTS_IN_E := \
+	src/test/ui \
+
+TESTS_IN_F := \
+	src/test/run-fail \
+	src/liballoc \
+	src/libcore
+
 ci-resume-subset-A:
-	$(Q)$(BOOTSTRAP) test $(TESTS_IN_B:%=--exclude %) $(TESTS_IN_C:%=--exclude %) $(TESTS_IN_D:%=--exclude %)
+	$(Q)$(BOOTSTRAP) test \
+		$(TESTS_IN_B:%=--exclude %) \
+		$(TESTS_IN_C:%=--exclude %) \
+		$(TESTS_IN_D:%=--exclude %) \
+		$(TESTS_IN_E:%=--exclude %) \
+		$(TESTS_IN_F:%=--exclude %) \
+		$(MIN_TEST:%=--exclude %) 
+
 ci-resume-subset-B:
 	$(Q)$(BOOTSTRAP) test $(TESTS_IN_B)
 ci-resume-subset-C:
 	$(Q)$(BOOTSTRAP) test $(TESTS_IN_C)
 ci-resume-subset-D:
 	$(Q)$(BOOTSTRAP) test $(TESTS_IN_D)
+ci-resume-subset-E:
+	$(Q)$(BOOTSTRAP) test $(TESTS_IN_E)
+ci-resume-subset-F:
+	$(Q)$(BOOTSTRAP) test $(TESTS_IN_F)
 
 .PHONY: dist
