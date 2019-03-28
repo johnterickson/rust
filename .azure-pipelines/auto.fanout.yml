@@ -251,37 +251,37 @@ jobs:
         MSYS_BITS: 64
         RUST_CONFIGURE_ARGS: --build=x86_64-pc-windows-msvc --enable-profiler
         ARTIFACT_NAME: x86_64-msvc-build
-        SCRIPT: make ci-subset-A
+        SCRIPT: make ci-resume-subset-A
       x86_64-msvc-B:
         MSYS_BITS: 64
         RUST_CONFIGURE_ARGS: --build=x86_64-pc-windows-msvc --enable-profiler
         ARTIFACT_NAME: x86_64-msvc-build
-        SCRIPT: make ci-subset-B
+        SCRIPT: make ci-resume-subset-B
       x86_64-msvc-C:
         MSYS_BITS: 64
         RUST_CONFIGURE_ARGS: --build=x86_64-pc-windows-msvc --enable-profiler
         ARTIFACT_NAME: x86_64-msvc-build
-        SCRIPT: make ci-subset-C
+        SCRIPT: make ci-resume-subset-C
       x86_64-msvc-D:
         MSYS_BITS: 64
         RUST_CONFIGURE_ARGS: --build=x86_64-pc-windows-msvc --enable-profiler
         ARTIFACT_NAME: x86_64-msvc-build
-        SCRIPT: make ci-subset-D
+        SCRIPT: make ci-resume-subset-D
       x86_64-msvc-E:
         MSYS_BITS: 64
         RUST_CONFIGURE_ARGS: --build=x86_64-pc-windows-msvc --enable-profiler
         ARTIFACT_NAME: x86_64-msvc-build
-        SCRIPT: make ci-subset-E
+        SCRIPT: make ci-resume-subset-E
       x86_64-msvc-F:
         MSYS_BITS: 64
         RUST_CONFIGURE_ARGS: --build=x86_64-pc-windows-msvc --enable-profiler
         ARTIFACT_NAME: x86_64-msvc-build
-        SCRIPT: make ci-subset-F
+        SCRIPT: make ci-resume-subset-F
       x86_64-msvc-G:
         MSYS_BITS: 64
         RUST_CONFIGURE_ARGS: --build=x86_64-pc-windows-msvc --enable-profiler
         ARTIFACT_NAME: x86_64-msvc-build
-        SCRIPT: make ci-subset-G
+        SCRIPT: make ci-resume-subset-G
 
 # macOS JOBS
 # - job: macOS
