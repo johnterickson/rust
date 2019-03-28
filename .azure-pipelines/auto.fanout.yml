@@ -399,7 +399,7 @@ jobs:
       #
       # Note that the compiler is compiled to target 10.8 here because the Xcode
       # version that we're using, 8.2, cannot compile LLVM for OSX 10.7.
-      x86_64-apple-1:
+      x86_64-apple-A:
         RUST_CHECK_TARGET: check
         RUST_CONFIGURE_ARGS: --build=x86_64-apple-darwin --enable-sanitizers --enable-profiler --set rust.jemalloc
         RUSTC_RETRY_LINKER_ON_SEGFAULT: 1
@@ -408,8 +408,8 @@ jobs:
         NO_LLVM_ASSERTIONS: 1
         NO_DEBUG_ASSERTIONS: 1
         ARTIFACT_NAME: x86_64-apple-build
-        SCRIPT: make ci-resume-subset-1
-      x86_64-apple-2:
+        SCRIPT: make ci-resume-subset-A
+      x86_64-apple-B:
         RUST_CHECK_TARGET: check
         RUST_CONFIGURE_ARGS: --build=x86_64-apple-darwin --enable-sanitizers --enable-profiler --set rust.jemalloc
         RUSTC_RETRY_LINKER_ON_SEGFAULT: 1
@@ -418,4 +418,24 @@ jobs:
         NO_LLVM_ASSERTIONS: 1
         NO_DEBUG_ASSERTIONS: 1
         ARTIFACT_NAME: x86_64-apple-build
-        SCRIPT: make ci-resume-subset-2
+        SCRIPT: make ci-resume-subset-B
+      x86_64-apple-C:
+        RUST_CHECK_TARGET: check
+        RUST_CONFIGURE_ARGS: --build=x86_64-apple-darwin --enable-sanitizers --enable-profiler --set rust.jemalloc
+        RUSTC_RETRY_LINKER_ON_SEGFAULT: 1
+        MACOSX_DEPLOYMENT_TARGET: 10.8
+        MACOSX_STD_DEPLOYMENT_TARGET: 10.7
+        NO_LLVM_ASSERTIONS: 1
+        NO_DEBUG_ASSERTIONS: 1
+        ARTIFACT_NAME: x86_64-apple-build
+        SCRIPT: make ci-resume-subset-C
+      x86_64-apple-D:
+        RUST_CHECK_TARGET: check
+        RUST_CONFIGURE_ARGS: --build=x86_64-apple-darwin --enable-sanitizers --enable-profiler --set rust.jemalloc
+        RUSTC_RETRY_LINKER_ON_SEGFAULT: 1
+        MACOSX_DEPLOYMENT_TARGET: 10.8
+        MACOSX_STD_DEPLOYMENT_TARGET: 10.7
+        NO_LLVM_ASSERTIONS: 1
+        NO_DEBUG_ASSERTIONS: 1
+        ARTIFACT_NAME: x86_64-apple-build
+        SCRIPT: make ci-resume-subset-D

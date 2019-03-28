@@ -97,4 +97,26 @@ ci-resume-subset-1:
 ci-resume-subset-2:
 	$(Q)$(BOOTSTRAP) test $(TESTS_IN_2)
 
+TESTS_IN_B := \
+	src/test/ui \
+	src/test/compile-fail \
+	src/tools/linkchecker
+
+TESTS_IN_C := \
+	src/test/run-pass \
+	src/test/run-pass-fulldeps
+
+TESTS_IN_D := \
+	src/test/rustdoc \
+	src/test/pretty
+
+ci-resume-subset-A:
+	$(Q)$(BOOTSTRAP) test $(TESTS_IN_B:%=--exclude %) $(TESTS_IN_C:%=--exclude %) $(TESTS_IN_D:%=--exclude %)
+ci-resume-subset-B:
+	$(Q)$(BOOTSTRAP) test $(TESTS_IN_B)
+ci-resume-subset-C:
+	$(Q)$(BOOTSTRAP) test $(TESTS_IN_C)
+ci-resume-subset-D:
+	$(Q)$(BOOTSTRAP) test $(TESTS_IN_D)
+
 .PHONY: dist
