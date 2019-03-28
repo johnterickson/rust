@@ -265,6 +265,11 @@ jobs:
         RUST_CONFIGURE_ARGS: --build=x86_64-pc-windows-msvc --enable-profiler
         ARTIFACT_NAME: x86_64-msvc-build
         SCRIPT: make ci-subset-F
+      x86_64-msvc-G:
+        MSYS_BITS: 64
+        RUST_CONFIGURE_ARGS: --build=x86_64-pc-windows-msvc --enable-profiler
+        ARTIFACT_NAME: x86_64-msvc-build
+        SCRIPT: make ci-subset-G
 
 # macOS JOBS
 - job: macOS
