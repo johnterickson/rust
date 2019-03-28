@@ -46,18 +46,14 @@ jobs:
     vmImage: 'vs2017-win2016'
   steps:
   - template: steps/windows.yml
-  - bash: |
-      set -x
-      git submodule
-      export SUBMODULES_EXCLUDES=$(git submodule | grep -Eow 'src/[^ ]+' | sed 's/\(.*\)/--exclude=\1\/\.git/')
-      echo $SUBMODULES_EXCLUDES
-      echo "##vso[task.setvariable variable=SUBMODULES_EXCLUDES]$SUBMODULES_EXCLUDES"
   - script: |
       echo on
       echo "##vso[task.setvariable variable=TAR_PATH]%TEMP%\drop.tar"
   - bash: |
       set -x
-      $TAR_COMMAND --exclude=.git $SUBMODULES_EXCLUDES% -cf $TAR_PATH .
+      git submodule
+      export SUBMODULES_EXCLUDES=$(git submodule | grep -Eow 'src/[^ ]+' | sed 's/\(.*\)/--exclude=\1\/\.git/')
+      $TAR_COMMAND --exclude=.git $SUBMODULES_EXCLUDES -cf $TEMP/drop.tar .
   - task: PublishPipelineArtifact@0
     inputs:
       artifactName: $(System.JobDisplayName)
