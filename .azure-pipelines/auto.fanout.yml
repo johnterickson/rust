@@ -66,7 +66,7 @@ jobs:
 #         SCRIPT: make ci-test-prepare
 
 - job: Windows_test
-  dependsOn: Windows_build
+  # dependsOn: Windows_build
   timeoutInMinutes: 600
   variables:
     TAR_COMMAND: tar
