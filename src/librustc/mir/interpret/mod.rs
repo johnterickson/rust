@@ -2,7 +2,7 @@
 
 #[macro_export]
 macro_rules! err {
-    ($($tt:tt)*) => { Err($crate::mir::interpret::EvalErrorKind::$($tt)*.into()) };
+    ($($tt:tt)*) => { Err($crate::mir::interpret::InterpError::$($tt)*.into()) };
 }
 
 mod error;
@@ -11,7 +11,7 @@ mod allocation;
 mod pointer;
 
 pub use self::error::{
-    EvalError, EvalResult, EvalErrorKind, AssertMessage, ConstEvalErr, struct_error,
+    EvalError, EvalResult, InterpError, AssertMessage, ConstEvalErr, struct_error,
     FrameInfo, ConstEvalRawResult, ConstEvalResult, ErrorHandled,
 };
 
@@ -344,7 +344,7 @@ impl<'tcx> AllocMap<'tcx> {
         }
     }
 
-    /// Returns `None` in case the `AllocId` is dangling. An `EvalContext` can still have a
+    /// Returns `None` in case the `AllocId` is dangling. An `InterpretCx` can still have a
     /// local `Allocation` for that `AllocId`, but having such an `AllocId` in a constant is
     /// illegal and will likely ICE.
     /// This function exists to allow const eval to detect the difference between evaluation-

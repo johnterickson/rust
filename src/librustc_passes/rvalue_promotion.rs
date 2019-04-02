@@ -405,8 +405,7 @@ fn check_expr_kind<'a, 'tcx>(
             for index in hirvec.iter() {
                 method_call_result &= v.check_expr(index);
             }
-            if let Some(def) = v.tables.type_dependent_defs().get(e.hir_id) {
-                let def_id = def.def_id();
+            if let Some(def_id) = v.tables.type_dependent_def_id(e.hir_id) {
                 match v.tcx.associated_item(def_id).container {
                     ty::ImplContainer(_) => method_call_result & v.handle_const_fn_call(def_id),
                     ty::TraitContainer(_) => NotPromotable,
@@ -587,7 +586,7 @@ fn check_adjustments<'a, 'tcx>(
             Adjust::NeverToAny |
             Adjust::ReifyFnPointer |
             Adjust::UnsafeFnPointer |
-            Adjust::ClosureFnPointer |
+            Adjust::ClosureFnPointer(_) |
             Adjust::MutToConstPointer |
             Adjust::Borrow(_) |
             Adjust::Unsize => {}

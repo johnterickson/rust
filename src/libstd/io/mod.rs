@@ -24,9 +24,9 @@
 //!     let mut buffer = [0; 10];
 //!
 //!     // read up to 10 bytes
-//!     f.read(&mut buffer)?;
+//!     let n = f.read(&mut buffer)?;
 //!
-//!     println!("The bytes: {:?}", buffer);
+//!     println!("The bytes: {:?}", &buffer[..n]);
 //!     Ok(())
 //! }
 //! ```
@@ -56,9 +56,9 @@
 //!     f.seek(SeekFrom::End(-10))?;
 //!
 //!     // read up to 10 bytes
-//!     f.read(&mut buffer)?;
+//!     let n = f.read(&mut buffer)?;
 //!
-//!     println!("The bytes: {:?}", buffer);
+//!     println!("The bytes: {:?}", &buffer[..n]);
 //!     Ok(())
 //! }
 //! ```
@@ -537,7 +537,9 @@ pub trait Read {
     ///     let mut buffer = [0; 10];
     ///
     ///     // read up to 10 bytes
-    ///     f.read(&mut buffer[..])?;
+    ///     let n = f.read(&mut buffer[..])?;
+    ///
+    ///     println!("The bytes: {:?}", &buffer[..n]);
     ///     Ok(())
     /// }
     /// ```
@@ -915,7 +917,7 @@ pub struct IoVecMut<'a>(sys::io::IoVecMut<'a>);
 
 #[unstable(feature = "iovec", issue = "58452")]
 impl<'a> fmt::Debug for IoVecMut<'a> {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Debug::fmt(self.0.as_slice(), fmt)
     }
 }
@@ -962,7 +964,7 @@ pub struct IoVec<'a>(sys::io::IoVec<'a>);
 
 #[unstable(feature = "iovec", issue = "58452")]
 impl<'a> fmt::Debug for IoVec<'a> {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Debug::fmt(self.0.as_slice(), fmt)
     }
 }
@@ -1062,12 +1064,23 @@ impl Initializer {
 /// use std::fs::File;
 ///
 /// fn main() -> std::io::Result<()> {
+///     let data = b"some bytes";
+///
+///     let mut pos = 0;
 ///     let mut buffer = File::create("foo.txt")?;
 ///
-///     buffer.write(b"some bytes")?;
+///     while pos < data.len() {
+///         let bytes_written = buffer.write(&data[pos..])?;
+///         pos += bytes_written;
+///     }
 ///     Ok(())
 /// }
 /// ```
+///
+/// The trait also provides convenience methods like [`write_all`], which calls
+/// `write` in a loop until its entire input has been written.
+///
+/// [`write_all`]: #method.write_all
 #[stable(feature = "rust1", since = "1.0.0")]
 #[doc(spotlight)]
 pub trait Write {
@@ -1151,7 +1164,7 @@ pub trait Write {
     /// fn main() -> std::io::Result<()> {
     ///     let mut buffer = BufWriter::new(File::create("foo.txt")?);
     ///
-    ///     buffer.write(b"some bytes")?;
+    ///     buffer.write_all(b"some bytes")?;
     ///     buffer.flush()?;
     ///     Ok(())
     /// }
@@ -1242,7 +1255,7 @@ pub trait Write {
     /// }
     /// ```
     #[stable(feature = "rust1", since = "1.0.0")]
-    fn write_fmt(&mut self, fmt: fmt::Arguments) -> Result<()> {
+    fn write_fmt(&mut self, fmt: fmt::Arguments<'_>) -> Result<()> {
         // Create a shim which translates a Write to a fmt::Write and saves
         // off I/O errors. instead of discarding them
         struct Adaptor<'a, T: ?Sized + 'a> {
@@ -1893,7 +1906,7 @@ impl<T, U> Chain<T, U> {
 
 #[stable(feature = "std_debug", since = "1.16.0")]
 impl<T: fmt::Debug, U: fmt::Debug> fmt::Debug for Chain<T, U> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Chain")
             .field("t", &self.first)
             .field("u", &self.second)

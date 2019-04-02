@@ -10,7 +10,7 @@ use rustc::hir::Node;
 use rustc::hir::{Item, ItemKind, print};
 use rustc::ty::{self, Ty, AssociatedItem};
 use rustc::ty::adjustment::AllowTwoPhase;
-use errors::{Applicability, DiagnosticBuilder, SourceMapper};
+use errors::{Applicability, DiagnosticBuilder};
 
 use super::method::probe;
 
@@ -119,42 +119,63 @@ impl<'a, 'gcx, 'tcx> FnCtxt<'a, 'gcx, 'tcx> {
         let expr_ty = self.resolve_type_vars_with_obligations(checked_ty);
         let mut err = self.report_mismatched_types(&cause, expected, expr_ty, e);
 
-        // If the expected type is an enum (Issue #55250) with any variants whose
-        // sole field is of the found type, suggest such variants. (Issue #42764)
-        if let ty::Adt(expected_adt, substs) = expected.sty {
-            if expected_adt.is_enum() {
-                let mut compatible_variants = expected_adt.variants
-                    .iter()
-                    .filter(|variant| variant.fields.len() == 1)
-                    .filter_map(|variant| {
-                        let sole_field = &variant.fields[0];
-                        let sole_field_ty = sole_field.ty(self.tcx, substs);
-                        if self.can_coerce(expr_ty, sole_field_ty) {
-                            let variant_path = self.tcx.def_path_str(variant.def_id);
-                            // FIXME #56861: DRYer prelude filtering
-                            Some(variant_path.trim_start_matches("std::prelude::v1::").to_string())
-                        } else {
-                            None
-                        }
-                    }).peekable();
-
-                if compatible_variants.peek().is_some() {
-                    let expr_text = print::to_string(print::NO_ANN, |s| s.print_expr(expr));
-                    let suggestions = compatible_variants
-                        .map(|v| format!("{}({})", v, expr_text));
-                    err.span_suggestions(
-                        expr.span,
-                        "try using a variant of the expected type",
-                        suggestions,
-                        Applicability::MaybeIncorrect,
-                    );
-                }
-            }
+        if self.is_assign_to_bool(expr, expected) {
+            // Error reported in `check_assign` so avoid emitting error again.
+            err.delay_as_bug();
+            return (expected, None)
         }
 
+        self.suggest_compatible_variants(&mut err, expr, expected, expr_ty);
         self.suggest_ref_or_into(&mut err, expr, expected, expr_ty);
 
         (expected, Some(err))
+    }
+
+    /// Returns whether the expected type is `bool` and the expression is `x = y`.
+    pub fn is_assign_to_bool(&self, expr: &hir::Expr, expected: Ty<'tcx>) -> bool {
+        if let hir::ExprKind::Assign(..) = expr.node {
+            return expected == self.tcx.types.bool;
+        }
+        false
+    }
+
+    /// If the expected type is an enum (Issue #55250) with any variants whose
+    /// sole field is of the found type, suggest such variants. (Issue #42764)
+    fn suggest_compatible_variants(
+        &self,
+        err: &mut DiagnosticBuilder<'_>,
+        expr: &hir::Expr,
+        expected: Ty<'tcx>,
+        expr_ty: Ty<'tcx>,
+    ) {
+        if let ty::Adt(expected_adt, substs) = expected.sty {
+            if !expected_adt.is_enum() {
+                return;
+            }
+
+            let mut compatible_variants = expected_adt.variants
+                .iter()
+                .filter(|variant| variant.fields.len() == 1)
+                .filter_map(|variant| {
+                    let sole_field = &variant.fields[0];
+                    let sole_field_ty = sole_field.ty(self.tcx, substs);
+                    if self.can_coerce(expr_ty, sole_field_ty) {
+                        let variant_path = self.tcx.def_path_str(variant.def_id);
+                        // FIXME #56861: DRYer prelude filtering
+                        Some(variant_path.trim_start_matches("std::prelude::v1::").to_string())
+                    } else {
+                        None
+                    }
+                }).peekable();
+
+            if compatible_variants.peek().is_some() {
+                let expr_text = print::to_string(print::NO_ANN, |s| s.print_expr(expr));
+                let suggestions = compatible_variants
+                    .map(|v| format!("{}({})", v, expr_text));
+                let msg = "try using a variant of the expected type";
+                err.span_suggestions(expr.span, msg, suggestions, Applicability::MaybeIncorrect);
+            }
+        }
     }
 
     pub fn get_conversion_methods(&self, span: Span, expected: Ty<'tcx>, checked_ty: Ty<'tcx>)
@@ -249,6 +270,26 @@ impl<'a, 'gcx, 'tcx> FnCtxt<'a, 'gcx, 'tcx> {
         None
     }
 
+    fn is_hir_id_from_struct_pattern_shorthand_field(&self, hir_id: hir::HirId, sp: Span) -> bool {
+        let cm = self.sess().source_map();
+        let parent_id = self.tcx.hir().get_parent_node_by_hir_id(hir_id);
+        if let Some(parent) = self.tcx.hir().find_by_hir_id(parent_id) {
+            // Account for fields
+            if let Node::Expr(hir::Expr {
+                node: hir::ExprKind::Struct(_, fields, ..), ..
+            }) = parent {
+                if let Ok(src) = cm.span_to_snippet(sp) {
+                    for field in fields {
+                        if field.ident.as_str() == src.as_str() && field.is_shorthand {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+        false
+    }
+
     /// This function is used to determine potential "simple" improvements or users' errors and
     /// provide them useful help. For example:
     ///
@@ -271,11 +312,17 @@ impl<'a, 'gcx, 'tcx> FnCtxt<'a, 'gcx, 'tcx> {
                  expected: Ty<'tcx>)
                  -> Option<(Span, &'static str, String)> {
         let cm = self.sess().source_map();
-        // Use the callsite's span if this is a macro call. #41858
-        let sp = cm.call_span_if_macro(expr.span);
+        let sp = expr.span;
         if !cm.span_to_filename(sp).is_real() {
+            // Ignore if span is from within a macro #41858, #58298. We previously used the macro
+            // call span, but that breaks down when the type error comes from multiple calls down.
             return None;
         }
+
+        let is_struct_pat_shorthand_field = self.is_hir_id_from_struct_pattern_shorthand_field(
+            expr.hir_id,
+            sp,
+        );
 
         match (&expected.sty, &checked_ty.sty) {
             (&ty::Ref(_, exp, _), &ty::Ref(_, check, _)) => match (&exp.sty, &check.sty) {
@@ -315,12 +362,12 @@ impl<'a, 'gcx, 'tcx> FnCtxt<'a, 'gcx, 'tcx> {
                 // bar(&x); // error, expected &mut
                 // ```
                 let ref_ty = match mutability {
-                    hir::Mutability::MutMutable => self.tcx.mk_mut_ref(
-                                                       self.tcx.mk_region(ty::ReStatic),
-                                                       checked_ty),
-                    hir::Mutability::MutImmutable => self.tcx.mk_imm_ref(
-                                                       self.tcx.mk_region(ty::ReStatic),
-                                                       checked_ty),
+                    hir::Mutability::MutMutable => {
+                        self.tcx.mk_mut_ref(self.tcx.mk_region(ty::ReStatic), checked_ty)
+                    }
+                    hir::Mutability::MutImmutable => {
+                        self.tcx.mk_imm_ref(self.tcx.mk_region(ty::ReStatic), checked_ty)
+                    }
                 };
                 if self.can_coerce(ref_ty, expected) {
                     if let Ok(src) = cm.span_to_snippet(sp) {
@@ -341,14 +388,22 @@ impl<'a, 'gcx, 'tcx> FnCtxt<'a, 'gcx, 'tcx> {
                         if let Some(sugg) = self.can_use_as_ref(expr) {
                             return Some(sugg);
                         }
+                        let field_name = if is_struct_pat_shorthand_field {
+                            format!("{}: ", sugg_expr)
+                        } else {
+                            String::new()
+                        };
                         return Some(match mutability {
-                            hir::Mutability::MutMutable => {
-                                (sp, "consider mutably borrowing here", format!("&mut {}",
-                                                                                sugg_expr))
-                            }
-                            hir::Mutability::MutImmutable => {
-                                (sp, "consider borrowing here", format!("&{}", sugg_expr))
-                            }
+                            hir::Mutability::MutMutable => (
+                                sp,
+                                "consider mutably borrowing here",
+                                format!("{}&mut {}", field_name, sugg_expr),
+                            ),
+                            hir::Mutability::MutImmutable => (
+                                sp,
+                                "consider borrowing here",
+                                format!("{}&{}", field_name, sugg_expr),
+                            ),
                         });
                     }
                 }
@@ -389,12 +444,18 @@ impl<'a, 'gcx, 'tcx> FnCtxt<'a, 'gcx, 'tcx> {
                                                                       checked,
                                                                       sp) {
                                 // do not suggest if the span comes from a macro (#52783)
-                                if let (Ok(code),
-                                        true) = (cm.span_to_snippet(sp), sp == expr.span) {
+                                if let (Ok(code), true) = (
+                                    cm.span_to_snippet(sp),
+                                    sp == expr.span,
+                                ) {
                                     return Some((
                                         sp,
                                         "consider dereferencing the borrow",
-                                        format!("*{}", code),
+                                        if is_struct_pat_shorthand_field {
+                                            format!("{}: *{}", code, code)
+                                        } else {
+                                            format!("*{}", code)
+                                        },
                                     ));
                                 }
                             }

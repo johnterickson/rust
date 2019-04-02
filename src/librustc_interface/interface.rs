@@ -1,4 +1,8 @@
-use queries::Queries;
+use crate::queries::Queries;
+use crate::util;
+use crate::profile;
+pub use crate::passes::BoxedResolver;
+
 use rustc::lint;
 use rustc::session::config::{self, Input};
 use rustc::session::{DiagnosticOutput, Session};
@@ -15,10 +19,6 @@ use std::result;
 use std::sync::{Arc, Mutex};
 use syntax;
 use syntax::source_map::{FileLoader, SourceMap};
-use util;
-use profile;
-
-pub use passes::BoxedResolver;
 
 pub type Result<T> = result::Result<T, ErrorReported>;
 
@@ -136,14 +136,12 @@ where
     F: FnOnce(&Compiler) -> R + Send,
     R: Send,
 {
-    syntax::with_globals(move || {
-        let stderr = config.stderr.take();
-        util::spawn_thread_pool(
-            config.opts.debugging_opts.threads,
-            &stderr,
-            || run_compiler_in_existing_thread_pool(config, f),
-        )
-    })
+    let stderr = config.stderr.take();
+    util::spawn_thread_pool(
+        config.opts.debugging_opts.threads,
+        &stderr,
+        || run_compiler_in_existing_thread_pool(config, f),
+    )
 }
 
 pub fn default_thread_pool<F, R>(f: F) -> R

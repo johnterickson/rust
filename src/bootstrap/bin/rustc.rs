@@ -122,8 +122,8 @@ fn main() {
             cmd.arg("-Cprefer-dynamic");
         }
 
-        // Help the libc crate compile by assisting it in finding the MUSL
-        // native libraries.
+        // Help the libc crate compile by assisting it in finding various
+        // sysroot native libraries.
         if let Some(s) = env::var_os("MUSL_ROOT") {
             if target.contains("musl") {
                 let mut root = OsString::from("native=");
@@ -131,6 +131,12 @@ fn main() {
                 root.push("/lib");
                 cmd.arg("-L").arg(&root);
             }
+        }
+        if let Some(s) = env::var_os("WASI_ROOT") {
+            let mut root = OsString::from("native=");
+            root.push(&s);
+            root.push("/lib/wasm32-wasi");
+            cmd.arg("-L").arg(&root);
         }
 
         // Override linker if necessary.
@@ -179,6 +185,33 @@ fn main() {
             cmd.arg("-C").arg("debug-assertions=no");
         } else {
             cmd.arg("-C").arg(format!("debug-assertions={}", debug_assertions));
+        }
+
+        // Build all crates in the `std` facade with `-Z emit-stack-sizes` to add stack usage
+        // information.
+        //
+        // When you use this `-Z` flag with Cargo you get stack usage information on all crates
+        // compiled from source, and when you are using LTO you also get information on pre-compiled
+        // crates like `core` and `std`, even if they were not compiled with `-Z emit-stack-sizes`.
+        // However, there's an exception: `compiler_builtins`. This crate is special and doesn't
+        // participate in LTO because it's always linked as a separate object file. For this reason
+        // it's impossible to get stack usage information about `compiler-builtins` using
+        // `RUSTFLAGS` + Cargo, or `cargo rustc`.
+        //
+        // To make the stack usage information of all crates under the `std` facade available to
+        // Cargo based stack usage analysis tools, in both LTO and non-LTO mode, we compile them
+        // with the `-Z emit-stack-sizes` flag. The `RUSTC_EMIT_STACK_SIZES` var helps us apply this
+        // flag only to the crates in the `std` facade. The `-Z` flag is known to currently work
+        // with targets that produce ELF files so we limit its use flag to those targets.
+        //
+        // NOTE(japaric) if this ever causes problem with an LLVM upgrade or any PR feel free to
+        // remove it or comment it out
+        if env::var_os("RUSTC_EMIT_STACK_SIZES").is_some()
+            && (target.contains("-linux-")
+                || target.contains("-none-eabi")
+                || target.ends_with("-none-elf"))
+        {
+            cmd.arg("-Zemit-stack-sizes");
         }
 
         if let Ok(s) = env::var("RUSTC_CODEGEN_UNITS") {

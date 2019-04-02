@@ -14,7 +14,7 @@ use rustc::ty::TypeFoldable;
 
 use super::{
     GlobalId, AllocId, Allocation, Scalar, EvalResult, Pointer, PointerArithmetic,
-    EvalContext, Machine, AllocMap, AllocationExtra,
+    InterpretCx, Machine, AllocMap, AllocationExtra,
     RawConst, Immediate, ImmTy, ScalarMaybeUndef, Operand, OpTy, MemoryKind
 };
 
@@ -305,7 +305,7 @@ impl<'tcx, Tag: ::std::fmt::Debug> PlaceTy<'tcx, Tag> {
 }
 
 // separating the pointer tag for `impl Trait`, see https://github.com/rust-lang/rust/issues/54385
-impl<'a, 'mir, 'tcx, Tag, M> EvalContext<'a, 'mir, 'tcx, M>
+impl<'a, 'mir, 'tcx, Tag, M> InterpretCx<'a, 'mir, 'tcx, M>
 where
     // FIXME: Working around https://github.com/rust-lang/rust/issues/54385
     Tag: ::std::fmt::Debug+Default+Copy+Eq+Hash+'static,
@@ -607,7 +607,7 @@ where
                 // global table but not in its local memory: It calls back into tcx through
                 // a query, triggering the CTFE machinery to actually turn this lazy reference
                 // into a bunch of bytes.  IOW, statics are evaluated with CTFE even when
-                // this EvalContext uses another Machine (e.g., in miri).  This is what we
+                // this InterpretCx uses another Machine (e.g., in miri).  This is what we
                 // want!  This way, computing statics works concistently between codegen
                 // and miri: They use the same query to eventually obtain a `ty::Const`
                 // and use that for further computation.
@@ -958,7 +958,11 @@ where
             layout::Variants::Single { index } => {
                 assert_eq!(index, variant_index);
             }
-            layout::Variants::Tagged { ref tag, .. } => {
+            layout::Variants::Multiple {
+                discr_kind: layout::DiscriminantKind::Tag,
+                ref discr,
+                ..
+            } => {
                 let adt_def = dest.layout.ty.ty_adt_def().unwrap();
                 assert!(variant_index.as_usize() < adt_def.variants.len());
                 let discr_val = adt_def
@@ -968,16 +972,18 @@ where
                 // raw discriminants for enums are isize or bigger during
                 // their computation, but the in-memory tag is the smallest possible
                 // representation
-                let size = tag.value.size(self);
+                let size = discr.value.size(self);
                 let discr_val = truncate(discr_val, size);
 
                 let discr_dest = self.place_field(dest, 0)?;
                 self.write_scalar(Scalar::from_uint(discr_val, size), discr_dest)?;
             }
-            layout::Variants::NicheFilling {
-                dataful_variant,
-                ref niche_variants,
-                niche_start,
+            layout::Variants::Multiple {
+                discr_kind: layout::DiscriminantKind::Niche {
+                    dataful_variant,
+                    ref niche_variants,
+                    niche_start,
+                },
                 ..
             } => {
                 assert!(

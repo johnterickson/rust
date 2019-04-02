@@ -1,5 +1,5 @@
 use crate::check::{Inherited, FnCtxt};
-use crate::constrained_type_params::{identify_constrained_type_params, Parameter};
+use crate::constrained_generic_params::{identify_constrained_generic_params, Parameter};
 
 use crate::hir::def_id::DefId;
 use rustc::traits::{self, ObligationCauseCode};
@@ -420,9 +420,6 @@ fn check_where_clauses<'a, 'gcx, 'fcx, 'tcx>(
     def_id: DefId,
     return_ty: Option<Ty<'tcx>>,
 ) {
-    use ty::subst::Subst;
-    use rustc::ty::TypeFoldable;
-
     let predicates = fcx.tcx.predicates_of(def_id);
 
     let generics = tcx.generics_of(def_id);
@@ -941,7 +938,7 @@ fn check_variances_for_type_defn<'a, 'tcx>(tcx: TyCtxt<'a, 'tcx, 'tcx>,
                         .map(|(index, _)| Parameter(index as u32))
                         .collect();
 
-    identify_constrained_type_params(tcx,
+    identify_constrained_generic_params(tcx,
                                      &ty_predicates,
                                      None,
                                      &mut constrained_parameters);
@@ -1010,8 +1007,6 @@ fn check_false_global_bounds<'a, 'gcx, 'tcx>(
     span: Span,
     id: hir::HirId)
 {
-    use rustc::ty::TypeFoldable;
-
     let empty_env = ty::ParamEnv::empty();
 
     let def_id = fcx.tcx.hir().local_def_id_from_hir_id(id);

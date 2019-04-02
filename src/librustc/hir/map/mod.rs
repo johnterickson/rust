@@ -153,7 +153,7 @@ impl Forest {
         &self.krate
     }
 
-    /// This is internally in the depedency tracking system.
+    /// This is used internally in the dependency tracking system.
     /// Use the `krate` method to ensure your dependency on the
     /// crate is tracked.
     pub fn untracked_krate<'hir>(&'hir self) -> &'hir Crate {
@@ -580,17 +580,17 @@ impl<'hir> Map<'hir> {
         &self.forest.krate.attrs
     }
 
-    pub fn get_module(&self, module: DefId) -> (&'hir Mod, Span, NodeId)
-    {
+    pub fn get_module(&self, module: DefId) -> (&'hir Mod, Span, HirId) {
         let node_id = self.as_local_node_id(module).unwrap();
+        let hir_id = self.node_to_hir_id(node_id);
         self.read(node_id);
         match self.find_entry(node_id).unwrap().node {
             Node::Item(&Item {
                 span,
                 node: ItemKind::Mod(ref m),
                 ..
-            }) => (m, span, node_id),
-            Node::Crate => (&self.forest.krate.module, self.forest.krate.span, node_id),
+            }) => (m, span, hir_id),
+            Node::Crate => (&self.forest.krate.module, self.forest.krate.span, hir_id),
             _ => panic!("not a module")
         }
     }
@@ -609,7 +609,7 @@ impl<'hir> Map<'hir> {
         let module = &self.forest.krate.modules[&node_id];
 
         for id in &module.items {
-            visitor.visit_item(self.expect_item(*id));
+            visitor.visit_item(self.expect_item_by_hir_id(*id));
         }
 
         for id in &module.trait_items {
@@ -1013,7 +1013,7 @@ impl<'hir> Map<'hir> {
     /// corresponding to the Node ID
     pub fn attrs(&self, id: NodeId) -> &'hir [ast::Attribute] {
         self.read(id); // reveals attributes on the node
-        let attrs = match self.find(id) {
+        let attrs = match self.find_entry(id).map(|entry| entry.node) {
             Some(Node::Local(l)) => Some(&l.attrs[..]),
             Some(Node::Item(i)) => Some(&i.attrs[..]),
             Some(Node::ForeignItem(fi)) => Some(&fi.attrs[..]),
@@ -1027,6 +1027,7 @@ impl<'hir> Map<'hir> {
             // Unit/tuple structs/variants take the attributes straight from
             // the struct/variant definition.
             Some(Node::Ctor(..)) => return self.attrs(self.get_parent(id)),
+            Some(Node::Crate) => Some(&self.forest.krate.attrs[..]),
             _ => None
         };
         attrs.unwrap_or(&[])
@@ -1292,7 +1293,7 @@ pub fn map_crate<'hir>(sess: &crate::session::Session,
 impl<'hir> print::PpAnn for Map<'hir> {
     fn nested(&self, state: &mut print::State<'_>, nested: print::Nested) -> io::Result<()> {
         match nested {
-            Nested::Item(id) => state.print_item(self.expect_item(id.id)),
+            Nested::Item(id) => state.print_item(self.expect_item_by_hir_id(id.id)),
             Nested::TraitItem(id) => state.print_trait_item(self.trait_item(id)),
             Nested::ImplItem(id) => state.print_impl_item(self.impl_item(id)),
             Nested::Body(id) => state.print_expr(&self.body(id).value),

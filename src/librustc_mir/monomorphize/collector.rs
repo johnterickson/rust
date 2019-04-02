@@ -563,7 +563,7 @@ impl<'a, 'tcx> MirVisitor<'tcx> for MirNeighborCollector<'a, 'tcx> {
                 );
                 visit_fn_use(self.tcx, fn_ty, false, &mut self.output);
             }
-            mir::Rvalue::Cast(mir::CastKind::ClosureFnPointer, ref operand, _) => {
+            mir::Rvalue::Cast(mir::CastKind::ClosureFnPointer(_), ref operand, _) => {
                 let source_ty = operand.ty(self.mir, self.tcx);
                 let source_ty = self.tcx.subst_and_normalize_erasing_regions(
                     self.param_substs,
@@ -1040,7 +1040,7 @@ impl<'b, 'a, 'v> ItemLikeVisitor<'v> for RootCollector<'b, 'a, 'v> {
 
 impl<'b, 'a, 'v> RootCollector<'b, 'a, 'v> {
     fn is_root(&self, def_id: DefId) -> bool {
-        !item_has_type_parameters(self.tcx, def_id) && match self.mode {
+        !item_requires_monomorphization(self.tcx, def_id) && match self.mode {
             MonoItemCollectionMode::Eager => {
                 true
             }
@@ -1101,7 +1101,7 @@ impl<'b, 'a, 'v> RootCollector<'b, 'a, 'v> {
     }
 }
 
-fn item_has_type_parameters<'a, 'tcx>(tcx: TyCtxt<'a, 'tcx, 'tcx>, def_id: DefId) -> bool {
+fn item_requires_monomorphization<'a, 'tcx>(tcx: TyCtxt<'a, 'tcx, 'tcx>, def_id: DefId) -> bool {
     let generics = tcx.generics_of(def_id);
     generics.requires_monomorphization(tcx)
 }

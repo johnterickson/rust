@@ -7,11 +7,11 @@ use rustc::ty::layout::{self, Size, Align, TyLayout, LayoutOf, VariantIdx};
 use rustc::ty;
 use rustc_data_structures::fx::FxHashSet;
 use rustc::mir::interpret::{
-    Scalar, AllocKind, EvalResult, EvalErrorKind,
+    Scalar, AllocKind, EvalResult, InterpError,
 };
 
 use super::{
-    OpTy, Machine, EvalContext, ValueVisitor, MPlaceTy,
+    OpTy, Machine, InterpretCx, ValueVisitor, MPlaceTy,
 };
 
 macro_rules! validation_failure {
@@ -153,7 +153,7 @@ struct ValidityVisitor<'rt, 'a: 'rt, 'mir: 'rt, 'tcx: 'a+'rt+'mir, M: Machine<'a
     path: Vec<PathElem>,
     ref_tracking: Option<&'rt mut RefTracking<MPlaceTy<'tcx, M::PointerTag>>>,
     const_mode: bool,
-    ecx: &'rt EvalContext<'a, 'mir, 'tcx, M>,
+    ecx: &'rt InterpretCx<'a, 'mir, 'tcx, M>,
 }
 
 impl<'rt, 'a, 'mir, 'tcx, M: Machine<'a, 'mir, 'tcx>> ValidityVisitor<'rt, 'a, 'mir, 'tcx, M> {
@@ -224,7 +224,7 @@ impl<'rt, 'a, 'mir, 'tcx, M: Machine<'a, 'mir, 'tcx>>
     type V = OpTy<'tcx, M::PointerTag>;
 
     #[inline(always)]
-    fn ecx(&self) -> &EvalContext<'a, 'mir, 'tcx, M> {
+    fn ecx(&self) -> &InterpretCx<'a, 'mir, 'tcx, M> {
         &self.ecx
     }
 
@@ -258,11 +258,11 @@ impl<'rt, 'a, 'mir, 'tcx, M: Machine<'a, 'mir, 'tcx>>
         match self.walk_value(op) {
             Ok(()) => Ok(()),
             Err(err) => match err.kind {
-                EvalErrorKind::InvalidDiscriminant(val) =>
+                InterpError::InvalidDiscriminant(val) =>
                     validation_failure!(
                         val, self.path, "a valid enum discriminant"
                     ),
-                EvalErrorKind::ReadPointerAsBytes =>
+                InterpError::ReadPointerAsBytes =>
                     validation_failure!(
                         "a pointer", self.path, "plain (non-pointer) bytes"
                     ),
@@ -355,9 +355,9 @@ impl<'rt, 'a, 'mir, 'tcx, M: Machine<'a, 'mir, 'tcx>>
                     Err(err) => {
                         error!("{:?} is not aligned to {:?}", ptr, align);
                         match err.kind {
-                            EvalErrorKind::InvalidNullPointerUsage =>
+                            InterpError::InvalidNullPointerUsage =>
                                 return validation_failure!("NULL reference", self.path),
-                            EvalErrorKind::AlignmentCheckFailed { required, has } =>
+                            InterpError::AlignmentCheckFailed { required, has } =>
                                 return validation_failure!(format!("unaligned reference \
                                     (required {} byte alignment but found {})",
                                     required.bytes(), has.bytes()), self.path),
@@ -562,7 +562,7 @@ impl<'rt, 'a, 'mir, 'tcx, M: Machine<'a, 'mir, 'tcx>>
                     Err(err) => {
                         // For some errors we might be able to provide extra information
                         match err.kind {
-                            EvalErrorKind::ReadUndefBytes(offset) => {
+                            InterpError::ReadUndefBytes(offset) => {
                                 // Some byte was undefined, determine which
                                 // element that byte belongs to so we can
                                 // provide an index.
@@ -587,7 +587,7 @@ impl<'rt, 'a, 'mir, 'tcx, M: Machine<'a, 'mir, 'tcx>>
     }
 }
 
-impl<'a, 'mir, 'tcx, M: Machine<'a, 'mir, 'tcx>> EvalContext<'a, 'mir, 'tcx, M> {
+impl<'a, 'mir, 'tcx, M: Machine<'a, 'mir, 'tcx>> InterpretCx<'a, 'mir, 'tcx, M> {
     /// This function checks the data at `op`. `op` is assumed to cover valid memory if it
     /// is an indirect operand.
     /// It will error if the bits at the destination do not match the ones described by the layout.

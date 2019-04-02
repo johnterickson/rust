@@ -190,6 +190,7 @@ const LLVM_TOOLS: &[&str] = &[
     "llvm-readobj", // used to get information from ELFs/objects that the other tools don't provide
     "llvm-size", // used to prints the size of the linker sections of a program
     "llvm-strip", // used to discard symbols from binary files to reduce their size
+    "llvm-ar" // used for creating and modifying archive files
 ];
 
 /// A structure representing a Rust compiler.
@@ -359,14 +360,18 @@ impl Build {
             }
             None => false,
         };
-        let rust_info = channel::GitInfo::new(&config, &src);
-        let cargo_info = channel::GitInfo::new(&config, &src.join("src/tools/cargo"));
-        let rls_info = channel::GitInfo::new(&config, &src.join("src/tools/rls"));
-        let clippy_info = channel::GitInfo::new(&config, &src.join("src/tools/clippy"));
-        let miri_info = channel::GitInfo::new(&config, &src.join("src/tools/miri"));
-        let rustfmt_info = channel::GitInfo::new(&config, &src.join("src/tools/rustfmt"));
-        let in_tree_llvm_info = channel::GitInfo::new(&config, &src.join("src/llvm-project"));
-        let emscripten_llvm_info = channel::GitInfo::new(&config, &src.join("src/llvm-emscripten"));
+
+        let ignore_git = config.ignore_git;
+        let rust_info = channel::GitInfo::new(ignore_git, &src);
+        let cargo_info = channel::GitInfo::new(ignore_git, &src.join("src/tools/cargo"));
+        let rls_info = channel::GitInfo::new(ignore_git, &src.join("src/tools/rls"));
+        let clippy_info = channel::GitInfo::new(ignore_git, &src.join("src/tools/clippy"));
+        let miri_info = channel::GitInfo::new(ignore_git, &src.join("src/tools/miri"));
+        let rustfmt_info = channel::GitInfo::new(ignore_git, &src.join("src/tools/rustfmt"));
+
+        // we always try to use git for LLVM builds
+        let in_tree_llvm_info = channel::GitInfo::new(false, &src.join("src/llvm-project"));
+        let emscripten_llvm_info = channel::GitInfo::new(false, &src.join("src/llvm-emscripten"));
 
         let mut build = Build {
             initial_rustc: config.initial_rustc.clone(),
@@ -857,6 +862,13 @@ impl Build {
         self.config.target_config.get(&target)
             .and_then(|t| t.musl_root.as_ref())
             .or(self.config.musl_root.as_ref())
+            .map(|p| &**p)
+    }
+
+    /// Returns the sysroot for the wasi target, if defined
+    fn wasi_root(&self, target: Interned<String>) -> Option<&Path> {
+        self.config.target_config.get(&target)
+            .and_then(|t| t.wasi_root.as_ref())
             .map(|p| &**p)
     }
 

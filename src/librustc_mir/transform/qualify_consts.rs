@@ -728,7 +728,10 @@ impl<'a, 'tcx> Checker<'a, 'tcx> {
                                    interior mutability, create a static instead");
                     }
                 }
-            } else {
+            } else if let BorrowKind::Mut { .. } | BorrowKind::Shared = kind {
+                // Don't promote BorrowKind::Shallow borrows, as they don't
+                // reach codegen.
+
                 // We might have a candidate for promotion.
                 let candidate = Candidate::Ref(location);
                 // We can only promote interior borrows of promotable temps.
@@ -1105,7 +1108,7 @@ impl<'a, 'tcx> Visitor<'tcx> for Checker<'a, 'tcx> {
             Rvalue::CheckedBinaryOp(..) |
             Rvalue::Cast(CastKind::ReifyFnPointer, ..) |
             Rvalue::Cast(CastKind::UnsafeFnPointer, ..) |
-            Rvalue::Cast(CastKind::ClosureFnPointer, ..) |
+            Rvalue::Cast(CastKind::ClosureFnPointer(_), ..) |
             Rvalue::Cast(CastKind::Unsize, ..) |
             Rvalue::Cast(CastKind::MutToConstPointer, ..) |
             Rvalue::Discriminant(..) |

@@ -28,7 +28,7 @@ use rustc::infer::canonical::QueryRegionConstraint;
 use rustc::infer::outlives::env::RegionBoundPairs;
 use rustc::infer::{InferCtxt, InferOk, LateBoundRegionConversionTime, NLLRegionVariableOrigin};
 use rustc::infer::type_variable::TypeVariableOrigin;
-use rustc::mir::interpret::{EvalErrorKind::BoundsCheck, ConstValue};
+use rustc::mir::interpret::{InterpError::BoundsCheck, ConstValue};
 use rustc::mir::tcx::PlaceTy;
 use rustc::mir::visit::{PlaceContext, Visitor, MutatingUseContext, NonMutatingUseContext};
 use rustc::mir::*;
@@ -1999,14 +1999,14 @@ impl<'a, 'gcx, 'tcx> TypeChecker<'a, 'gcx, 'tcx> {
                         }
                     }
 
-                    CastKind::ClosureFnPointer => {
+                    CastKind::ClosureFnPointer(unsafety) => {
                         let sig = match op.ty(mir, tcx).sty {
                             ty::Closure(def_id, substs) => {
                                 substs.closure_sig_ty(def_id, tcx).fn_sig(tcx)
                             }
                             _ => bug!(),
                         };
-                        let ty_fn_ptr_from = tcx.coerce_closure_fn_ty(sig);
+                        let ty_fn_ptr_from = tcx.coerce_closure_fn_ty(sig, *unsafety);
 
                         if let Err(terr) = self.eq_types(
                             ty_fn_ptr_from,

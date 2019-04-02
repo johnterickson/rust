@@ -4,14 +4,14 @@ use syntax::ast::{FloatTy, IntTy, UintTy};
 
 use rustc_apfloat::ieee::{Single, Double};
 use rustc::mir::interpret::{
-    Scalar, EvalResult, Pointer, PointerArithmetic, EvalErrorKind, truncate
+    Scalar, EvalResult, Pointer, PointerArithmetic, InterpError, truncate
 };
 use rustc::mir::CastKind;
 use rustc_apfloat::Float;
 
-use super::{EvalContext, Machine, PlaceTy, OpTy, ImmTy, Immediate};
+use super::{InterpretCx, Machine, PlaceTy, OpTy, ImmTy, Immediate};
 
-impl<'a, 'mir, 'tcx, M: Machine<'a, 'mir, 'tcx>> EvalContext<'a, 'mir, 'tcx, M> {
+impl<'a, 'mir, 'tcx, M: Machine<'a, 'mir, 'tcx>> InterpretCx<'a, 'mir, 'tcx, M> {
     fn type_is_fat_ptr(&self, ty: Ty<'tcx>) -> bool {
         match ty.sty {
             ty::RawPtr(ty::TypeAndMut { ty, .. }) |
@@ -64,8 +64,7 @@ impl<'a, 'mir, 'tcx, M: Machine<'a, 'mir, 'tcx>> EvalContext<'a, 'mir, 'tcx, M> 
                                     dest);
                             }
                         }
-                        layout::Variants::Tagged { .. } |
-                        layout::Variants::NicheFilling { .. } => {},
+                        layout::Variants::Multiple { .. } => {},
                     }
 
                     let dest_val = self.cast_scalar(src.to_scalar()?, src.layout, dest.layout)?;
@@ -86,7 +85,7 @@ impl<'a, 'mir, 'tcx, M: Machine<'a, 'mir, 'tcx>> EvalContext<'a, 'mir, 'tcx, M> 
                             self.param_env,
                             def_id,
                             substs,
-                        ).ok_or_else(|| EvalErrorKind::TooGeneric.into());
+                        ).ok_or_else(|| InterpError::TooGeneric.into());
                         let fn_ptr = self.memory.create_fn_alloc(instance?).with_default_tag();
                         self.write_scalar(Scalar::Ptr(fn_ptr.into()), dest)?;
                     }
@@ -105,7 +104,7 @@ impl<'a, 'mir, 'tcx, M: Machine<'a, 'mir, 'tcx>> EvalContext<'a, 'mir, 'tcx, M> 
                 }
             }
 
-            ClosureFnPointer => {
+            ClosureFnPointer(_) => {
                 // The src operand does not matter, just its type
                 match src.layout.ty.sty {
                     ty::Closure(def_id, substs) => {
