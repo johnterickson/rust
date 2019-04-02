@@ -285,7 +285,7 @@ jobs:
         ARTIFACT_NAME: x86_64-msvc-build
         SCRIPT: make ci-resume-subset-G
 
-macOS JOBS
+# macOS JOBS
 - job: macOS
   timeoutInMinutes: 600
   variables:
