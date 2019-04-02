@@ -212,7 +212,7 @@ jobs:
 
   # - template: steps/macos.yml 
   - bash: $TAR_COMMAND -xf $TEMP/drop.tar
-  - bash: rm ./drop.tar
+  - bash: rm $TEMP/drop.tar
   - script: |
       REM echo force the specific VS version https://github.com/johnterickson/rust/issues/8
       IF "%VCVARS_BAT%" NEQ "" ( 
