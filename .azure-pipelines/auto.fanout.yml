@@ -17,56 +17,56 @@ variables:
 
 jobs:
 # WINDOWS JOBS
-# - job: Windows
-#   timeoutInMinutes: 600
-#   variables:
-#     TAR_COMMAND: tar
-#   pool:
-#     vmImage: 'vs2017-win2016'
-#   steps:
-#   - template: steps/windows.yml
-#   strategy:
-#     matrix:
-#       # 32/64 bit MSVC tests
-#       x86_64-msvc-1:
-#         MSYS_BITS: 64
-#         RUST_CONFIGURE_ARGS: --build=x86_64-pc-windows-msvc --enable-profiler
-#         SCRIPT: make ci-subset-1
-#       x86_64-msvc-2:
-#         MSYS_BITS: 64
-#         RUST_CONFIGURE_ARGS: --build=x86_64-pc-windows-msvc --enable-profiler
-#         SCRIPT: make ci-subset-2
+- job: Windows
+  timeoutInMinutes: 600
+  variables:
+    TAR_COMMAND: tar
+  pool:
+    vmImage: 'vs2017-win2016'
+  steps:
+  - template: steps/windows.yml
+  strategy:
+    matrix:
+      # 32/64 bit MSVC tests
+      x86_64-msvc-1:
+        MSYS_BITS: 64
+        RUST_CONFIGURE_ARGS: --build=x86_64-pc-windows-msvc --enable-profiler
+        SCRIPT: make ci-subset-1
+      x86_64-msvc-2:
+        MSYS_BITS: 64
+        RUST_CONFIGURE_ARGS: --build=x86_64-pc-windows-msvc --enable-profiler
+        SCRIPT: make ci-subset-2
 
-# - job: Windows_build  
-#   timeoutInMinutes: 600
-#   variables:
-#     TAR_COMMAND: tar
-#   pool:
-#     vmImage: 'vs2017-win2016'
-#   steps:
-#   - template: steps/windows.yml
-#   - script: |
-#       echo on
-#       echo "##vso[task.setvariable variable=TAR_PATH]%TEMP%\drop.tar"
-#   - bash: |
-#       set -x
-#       git submodule
-#       export SUBMODULES_EXCLUDES=$(git submodule | grep -Eow 'src/[^ ]+' | sed 's/\(.*\)/--exclude=\1\/\.git/')
-#       $TAR_COMMAND --dereference --exclude=.git $SUBMODULES_EXCLUDES -cf $TEMP/drop.tar .
-#   - task: PublishPipelineArtifact@0
-#     inputs:
-#       artifactName: $(System.JobDisplayName)
-#       targetPath: $(TAR_PATH)
-#   strategy:
-#     matrix:
-#       # 32/64 bit MSVC tests
-#       x86_64-msvc-build:
-#         MSYS_BITS: 64
-#         RUST_CONFIGURE_ARGS: --build=x86_64-pc-windows-msvc --enable-profiler
-#         SCRIPT: make ci-test-prepare
+- job: Windows_build  
+  timeoutInMinutes: 600
+  variables:
+    TAR_COMMAND: tar
+  pool:
+    vmImage: 'vs2017-win2016'
+  steps:
+  - template: steps/windows.yml
+  - script: |
+      echo on
+      echo "##vso[task.setvariable variable=TAR_PATH]%TEMP%\drop.tar"
+  - bash: |
+      set -x
+      git submodule
+      export SUBMODULES_EXCLUDES=$(git submodule | grep -Eow 'src/[^ ]+' | sed 's/\(.*\)/--exclude=\1\/\.git/')
+      $TAR_COMMAND --dereference --exclude=.git $SUBMODULES_EXCLUDES -cf $TEMP/drop.tar .
+  - task: PublishPipelineArtifact@0
+    inputs:
+      artifactName: $(System.JobDisplayName)
+      targetPath: $(TAR_PATH)
+  strategy:
+    matrix:
+      # 32/64 bit MSVC tests
+      x86_64-msvc-build:
+        MSYS_BITS: 64
+        RUST_CONFIGURE_ARGS: --build=x86_64-pc-windows-msvc --enable-profiler
+        SCRIPT: make ci-test-prepare
 
 - job: Windows_test
-  # dependsOn: Windows_build
+  dependsOn: Windows_build
   timeoutInMinutes: 600
   variables:
     TAR_COMMAND: tar
@@ -195,20 +195,20 @@ jobs:
       echo on
       echo ##vso[task.setvariable variable=TAR_FOLDER_PATH]%TEMP%
   - template: steps/show-environment-variables.yml
-  # - task: DownloadPipelineArtifact@1
-  #   inputs:
-  #     artifactName: $(ARTIFACT_NAME)
-  #     downloadPath: $(TAR_FOLDER_PATH)
   - task: DownloadPipelineArtifact@1
     inputs:
       artifactName: $(ARTIFACT_NAME)
       downloadPath: $(TAR_FOLDER_PATH)
-      buildType: specific
-      project: rust
-      pipeline: 8
-      buildVersionToDownload: specific
-      buildId: 188
-      # https://dev.azure.com/rust-lang-azure/rust/_build/results?buildId=145
+  # - task: DownloadPipelineArtifact@1
+  #   inputs:
+  #     artifactName: $(ARTIFACT_NAME)
+  #     downloadPath: $(TAR_FOLDER_PATH)
+  #     buildType: specific
+  #     project: rust
+  #     pipeline: 8
+  #     buildVersionToDownload: specific
+  #     buildId: 188
+  #     # https://dev.azure.com/rust-lang-azure/rust/_build/results?buildId=145
 
   # - template: steps/macos.yml 
   - bash: $TAR_COMMAND -xf $TEMP/drop.tar
