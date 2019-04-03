@@ -76,34 +76,28 @@ jobs:
     vmImage: 'vs2017-win2016'
   steps:
   - script: |
-      choco install msys2 --params="/InstallDir:C:\msys64 /NoPath" -y
-      set PATH=C:\msys64\usr\bin;%PATH%
-      pacman -S --noconfirm --needed base-devel ca-certificates make diffutils tar 
-      IF "%MINGW_URL%"=="" (
-        IF "%MSYS_BITS%"=="32" pacman -S --noconfirm --needed mingw-w64-i686-toolchain mingw-w64-i686-cmake mingw-w64-i686-gcc mingw-w64-i686-python2
-        IF "%MSYS_BITS%"=="64" pacman -S --noconfirm --needed mingw-w64-x86_64-toolchain mingw-w64-x86_64-cmake mingw-w64-x86_64-gcc mingw-w64-x86_64-python2
-      )
+      set MSYS_PATH=%CD%\build\msys64
+      set PATH=%MSYS_PATH%\usr\bin;%PATH%
       where rev
       rev --help
       where make
-
-      echo ##vso[task.prependpath]C:\msys64\usr\bin
+      echo ##vso[task.prependpath]%MSYS_PATH%\usr\bin
     displayName: Install msys2
 
-  # If we need to download a custom MinGW, do so here and set the path
-  # appropriately.
-  #
-  # Note that this *also* means that we're not using what is typically
-  # /mingw32/bin/python2.7.exe, which is a "correct" python interpreter where
-  # /usr/bin/python2.7.exe is not. To ensure we use the right interpreter we
-  # move `C:\Python27` ahead in PATH and then also make sure the `python2.7.exe`
-  # file exists in there (which it doesn't by default).
-  - script: |
-      powershell -Command "iwr -outf %MINGW_ARCHIVE% %MINGW_URL%/%MINGW_ARCHIVE%"
-      7z x -y %MINGW_ARCHIVE% > nul
-      echo ##vso[task.prependpath]%CD%\%MINGW_DIR%\bin
-    condition: and(succeeded(), ne(variables['MINGW_URL'],''))
-    displayName: Download custom MinGW
+  # # If we need to download a custom MinGW, do so here and set the path
+  # # appropriately.
+  # #
+  # # Note that this *also* means that we're not using what is typically
+  # # /mingw32/bin/python2.7.exe, which is a "correct" python interpreter where
+  # # /usr/bin/python2.7.exe is not. To ensure we use the right interpreter we
+  # # move `C:\Python27` ahead in PATH and then also make sure the `python2.7.exe`
+  # # file exists in there (which it doesn't by default).
+  # - script: |
+  #     powershell -Command "iwr -outf %MINGW_ARCHIVE% %MINGW_URL%/%MINGW_ARCHIVE%"
+  #     7z x -y %MINGW_ARCHIVE% > nul
+  #     echo ##vso[task.prependpath]%CD%\%MINGW_DIR%\bin
+  #   condition: and(succeeded(), ne(variables['MINGW_URL'],''))
+  #   displayName: Download custom MinGW
 
   # If we're compiling for MSVC then we, like most other distribution builders,
   # switch to clang as the compiler. This'll allow us eventually to enable LTO
@@ -116,36 +110,37 @@ jobs:
   # Original downloaded here came from
   # http://releases.llvm.org/7.0.0/LLVM-7.0.0-win64.exe
   - script: |
-      powershell -Command "iwr -outf LLVM-7.0.0-win64.exe https://s3-us-west-1.amazonaws.com/rust-lang-ci2/rust-ci-mirror/LLVM-7.0.0-win64.exe"
-      .\LLVM-7.0.0-win64.exe /S /NCRC /D=C:\clang-rust
-      set RUST_CONFIGURE_ARGS=%RUST_CONFIGURE_ARGS% --set llvm.clang-cl=C:\clang-rust\bin\clang-cl.exe
+      # powershell -Command "iwr -outf LLVM-7.0.0-win64.exe https://s3-us-west-1.amazonaws.com/rust-lang-ci2/rust-ci-mirror/LLVM-7.0.0-win64.exe"
+      # .\LLVM-7.0.0-win64.exe /S /NCRC /D=C:\clang-rust
+      set CLANG_DIR=%CD%\build\clang-rust
+      set RUST_CONFIGURE_ARGS=%RUST_CONFIGURE_ARGS% --set llvm.clang-cl=%CLANG_DIR%\bin\clang-cl.exe
       echo ##vso[task.setvariable variable=RUST_CONFIGURE_ARGS]%RUST_CONFIGURE_ARGS%
     condition: and(succeeded(), eq(variables['MINGW_URL'],''))
     displayName: Download clang
 
-  # Here we do a pretty heinous thing which is to mangle the MinGW installation
-  # we just had above. Currently, as of this writing, we're using MinGW-w64
-  # builds of gcc, and that's currently at 6.3.0. We use 6.3.0 as it appears to
-  # be the first version which contains a fix for #40546, builds randomly
-  # failing during LLVM due to ar.exe/ranlib.exe failures.
-  #
-  # Unfortunately, though, 6.3.0 *also* is the first version of MinGW-w64 builds
-  # to contain a regression in gdb (#40184). As a result if we were to use the
-  # gdb provided (7.11.1) then we would fail all debuginfo tests.
-  #
-  # In order to fix spurious failures (pretty high priority) we use 6.3.0. To
-  # avoid disabling gdb tests we download an *old* version of gdb, specifically
-  # that found inside the 6.2.0 distribution. We then overwrite the 6.3.0 gdb
-  # with the 6.2.0 gdb to get tests passing.
-  #
-  # Note that we don't literally overwrite the gdb.exe binary because it appears
-  # to just use gdborig.exe, so that's the binary we deal with instead.
-  - script: |
-      echo ON
-      powershell -Command "iwr -outf 2017-04-20-%MSYS_BITS%bit-gdborig.exe %MINGW_URL%/2017-04-20-%MSYS_BITS%bit-gdborig.exe"
-      mv 2017-04-20-%MSYS_BITS%bit-gdborig.exe %MINGW_DIR%\bin\gdborig.exe
-    condition: and(succeeded(), ne(variables['MINGW_URL'],''))
-    displayName: Override with 6.3.0 gdb with 6.2.0 gdb
+  # # Here we do a pretty heinous thing which is to mangle the MinGW installation
+  # # we just had above. Currently, as of this writing, we're using MinGW-w64
+  # # builds of gcc, and that's currently at 6.3.0. We use 6.3.0 as it appears to
+  # # be the first version which contains a fix for #40546, builds randomly
+  # # failing during LLVM due to ar.exe/ranlib.exe failures.
+  # #
+  # # Unfortunately, though, 6.3.0 *also* is the first version of MinGW-w64 builds
+  # # to contain a regression in gdb (#40184). As a result if we were to use the
+  # # gdb provided (7.11.1) then we would fail all debuginfo tests.
+  # #
+  # # In order to fix spurious failures (pretty high priority) we use 6.3.0. To
+  # # avoid disabling gdb tests we download an *old* version of gdb, specifically
+  # # that found inside the 6.2.0 distribution. We then overwrite the 6.3.0 gdb
+  # # with the 6.2.0 gdb to get tests passing.
+  # #
+  # # Note that we don't literally overwrite the gdb.exe binary because it appears
+  # # to just use gdborig.exe, so that's the binary we deal with instead.
+  # - script: |
+  #     echo ON
+  #     powershell -Command "iwr -outf 2017-04-20-%MSYS_BITS%bit-gdborig.exe %MINGW_URL%/2017-04-20-%MSYS_BITS%bit-gdborig.exe"
+  #     mv 2017-04-20-%MSYS_BITS%bit-gdborig.exe %MINGW_DIR%\bin\gdborig.exe
+  #   condition: and(succeeded(), ne(variables['MINGW_URL'],''))
+  #   displayName: Override with 6.3.0 gdb with 6.2.0 gdb
 
   # Otherwise pull in the MinGW installed on appveyor
   - script: |
@@ -169,9 +164,9 @@ jobs:
 
   # Note that this is originally from the github releases patch of Ninja
   - script: |
-      md ninja
-      powershell -Command "iwr -outf 2017-03-15-ninja-win.zip https://s3-us-west-1.amazonaws.com/rust-lang-ci2/rust-ci-mirror/2017-03-15-ninja-win.zip"
-      7z x -oninja 2017-03-15-ninja-win.zip
+      # md ninja
+      # powershell -Command "iwr -outf 2017-03-15-ninja-win.zip https://s3-us-west-1.amazonaws.com/rust-lang-ci2/rust-ci-mirror/2017-03-15-ninja-win.zip"
+      # 7z x -oninja 2017-03-15-ninja-win.zip
       set RUST_CONFIGURE_ARGS=%RUST_CONFIGURE_ARGS% --enable-ninja
       echo ##vso[task.setvariable variable=RUST_CONFIGURE_ARGS]%RUST_CONFIGURE_ARGS%
       echo ##vso[task.prependpath]%CD%\ninja
@@ -224,14 +219,6 @@ jobs:
       where sccache
       where rev
       set | findstr /v SCCACHE_AZURE_CONNECTION_STRING
-
-      REM echo hack as drive D is too small
-      IF NOT "%DISABLE_DISK_SPACE_HACK%"=="1" (
-        IF NOT EXIST build (
-          mkdir c:\MORE_SPACE
-          mklink /J build c:\MORE_SPACE
-        )
-      )
 
       if not exist D:\cache\rustsrc\NUL mkdir D:\cache\rustsrc
       

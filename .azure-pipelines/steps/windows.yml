@@ -3,8 +3,16 @@ steps:
   fetchDepth: 2
 
 - script: |
-    choco install msys2 --params="/InstallDir:C:\msys64 /NoPath" -y
-    set PATH=C:\msys64\usr\bin;%PATH%
+    REM echo hack as drive D is too small
+    IF NOT "%DISABLE_DISK_SPACE_HACK%"=="1" (
+      mkdir c:\MORE_SPACE
+      mklink /J build c:\MORE_SPACE
+    )
+
+- script: |
+    set MSYS_PATH=%CD%\build\msys64
+    choco install msys2 --params="/InstallDir:C:\%MSYS_PATH% /NoPath" -y
+    set PATH=%MSYS_PATH%\usr\bin;%PATH%
     pacman -S --noconfirm --needed base-devel ca-certificates make diffutils tar 
     IF "%MINGW_URL%"=="" (
       IF "%MSYS_BITS%"=="32" pacman -S --noconfirm --needed mingw-w64-i686-toolchain mingw-w64-i686-cmake mingw-w64-i686-gcc mingw-w64-i686-python2
@@ -14,7 +22,7 @@ steps:
     rev --help
     where make
 
-    echo ##vso[task.prependpath]C:\msys64\usr\bin
+    echo ##vso[task.prependpath]%MSYS_PATH%\usr\bin
   displayName: Install msys2
 
 # If we need to download a custom MinGW, do so here and set the path
@@ -43,9 +51,10 @@ steps:
 # Original downloaded here came from
 # http://releases.llvm.org/7.0.0/LLVM-7.0.0-win64.exe
 - script: |
-    powershell -Command "iwr -outf LLVM-7.0.0-win64.exe https://s3-us-west-1.amazonaws.com/rust-lang-ci2/rust-ci-mirror/LLVM-7.0.0-win64.exe"
-    .\LLVM-7.0.0-win64.exe /S /NCRC /D=C:\clang-rust
-    set RUST_CONFIGURE_ARGS=%RUST_CONFIGURE_ARGS% --set llvm.clang-cl=C:\clang-rust\bin\clang-cl.exe
+    powershell -Command "iwr -outf %TEMP%\LLVM-7.0.0-win64.exe https://s3-us-west-1.amazonaws.com/rust-lang-ci2/rust-ci-mirror/LLVM-7.0.0-win64.exe"
+    set CLANG_DIR=%CD%\build\clang-rust
+    %TEMP%\LLVM-7.0.0-win64.exe /S /NCRC /D=%CLANG_DIR%
+    set RUST_CONFIGURE_ARGS=%RUST_CONFIGURE_ARGS% --set llvm.clang-cl=%CLANG_DIR%\bin\clang-cl.exe
     echo ##vso[task.setvariable variable=RUST_CONFIGURE_ARGS]%RUST_CONFIGURE_ARGS%
   condition: and(succeeded(), eq(variables['MINGW_URL'],''))
   displayName: Download clang
@@ -124,12 +133,6 @@ steps:
     where sccache
     where rev
     set | findstr /v SCCACHE_AZURE_CONNECTION_STRING
-
-    REM echo hack as drive D is too small
-    IF NOT "%DISABLE_DISK_SPACE_HACK%"=="1" (
-      mkdir c:\MORE_SPACE
-      mklink /J build c:\MORE_SPACE
-    )
 
     if not exist D:\cache\rustsrc\NUL mkdir D:\cache\rustsrc
     
