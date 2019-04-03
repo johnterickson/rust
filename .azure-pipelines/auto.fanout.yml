@@ -16,57 +16,57 @@ variables:
 - group: caching
 
 jobs:
-# WINDOWS JOBS
-- job: Windows
-  timeoutInMinutes: 600
-  variables:
-    TAR_COMMAND: tar
-  pool:
-    vmImage: 'vs2017-win2016'
-  steps:
-  - template: steps/windows.yml
-  strategy:
-    matrix:
-      # 32/64 bit MSVC tests
-      x86_64-msvc-1:
-        MSYS_BITS: 64
-        RUST_CONFIGURE_ARGS: --build=x86_64-pc-windows-msvc --enable-profiler
-        SCRIPT: make ci-subset-1
-      x86_64-msvc-2:
-        MSYS_BITS: 64
-        RUST_CONFIGURE_ARGS: --build=x86_64-pc-windows-msvc --enable-profiler
-        SCRIPT: make ci-subset-2
+# # WINDOWS JOBS
+# - job: Windows
+#   timeoutInMinutes: 600
+#   variables:
+#     TAR_COMMAND: tar
+#   pool:
+#     vmImage: 'vs2017-win2016'
+#   steps:
+#   - template: steps/windows.yml
+#   strategy:
+#     matrix:
+#       # 32/64 bit MSVC tests
+#       x86_64-msvc-1:
+#         MSYS_BITS: 64
+#         RUST_CONFIGURE_ARGS: --build=x86_64-pc-windows-msvc --enable-profiler
+#         SCRIPT: make ci-subset-1
+#       x86_64-msvc-2:
+#         MSYS_BITS: 64
+#         RUST_CONFIGURE_ARGS: --build=x86_64-pc-windows-msvc --enable-profiler
+#         SCRIPT: make ci-subset-2
 
-- job: Windows_build  
-  timeoutInMinutes: 600
-  variables:
-    TAR_COMMAND: tar
-  pool:
-    vmImage: 'vs2017-win2016'
-  steps:
-  - template: steps/windows.yml
-  - script: |
-      echo on
-      echo "##vso[task.setvariable variable=TAR_PATH]%TEMP%\drop.tar"
-  - bash: |
-      set -x
-      git submodule
-      export SUBMODULES_EXCLUDES=$(git submodule | grep -Eow 'src/[^ ]+' | sed 's/\(.*\)/--exclude=\1\/\.git/')
-      $TAR_COMMAND --dereference --exclude=.git $SUBMODULES_EXCLUDES -cf $TEMP/drop.tar .
-  - task: PublishPipelineArtifact@0
-    inputs:
-      artifactName: $(System.JobDisplayName)
-      targetPath: $(TAR_PATH)
-  strategy:
-    matrix:
-      # 32/64 bit MSVC tests
-      x86_64-msvc-build:
-        MSYS_BITS: 64
-        RUST_CONFIGURE_ARGS: --build=x86_64-pc-windows-msvc --enable-profiler
-        SCRIPT: make ci-test-prepare
+# - job: Windows_build  
+#   timeoutInMinutes: 600
+#   variables:
+#     TAR_COMMAND: tar
+#   pool:
+#     vmImage: 'vs2017-win2016'
+#   steps:
+#   - template: steps/windows.yml
+#   - script: |
+#       echo on
+#       echo "##vso[task.setvariable variable=TAR_PATH]%TEMP%\drop.tar"
+#   - bash: |
+#       set -x
+#       git submodule
+#       export SUBMODULES_EXCLUDES=$(git submodule | grep -Eow 'src/[^ ]+' | sed 's/\(.*\)/--exclude=\1\/\.git/')
+#       $TAR_COMMAND --dereference --exclude=.git $SUBMODULES_EXCLUDES -cf $TEMP/drop.tar .
+#   - task: PublishPipelineArtifact@0
+#     inputs:
+#       artifactName: $(System.JobDisplayName)
+#       targetPath: $(TAR_PATH)
+#   strategy:
+#     matrix:
+#       # 32/64 bit MSVC tests
+#       x86_64-msvc-build:
+#         MSYS_BITS: 64
+#         RUST_CONFIGURE_ARGS: --build=x86_64-pc-windows-msvc --enable-profiler
+#         SCRIPT: make ci-test-prepare
 
 - job: Windows_test
-  dependsOn: Windows_build
+  # dependsOn: Windows_build
   timeoutInMinutes: 600
   variables:
     TAR_COMMAND: tar
@@ -197,20 +197,20 @@ jobs:
       echo on
       echo ##vso[task.setvariable variable=TAR_FOLDER_PATH]%TEMP%
   - template: steps/show-environment-variables.yml
-  - task: DownloadPipelineArtifact@1
-    inputs:
-      artifactName: $(ARTIFACT_NAME)
-      downloadPath: $(TAR_FOLDER_PATH)
   # - task: DownloadPipelineArtifact@1
   #   inputs:
   #     artifactName: $(ARTIFACT_NAME)
   #     downloadPath: $(TAR_FOLDER_PATH)
-  #     buildType: specific
-  #     project: rust
-  #     pipeline: 8
-  #     buildVersionToDownload: specific
-  #     buildId: 188
-  #     # https://dev.azure.com/rust-lang-azure/rust/_build/results?buildId=145
+  - task: DownloadPipelineArtifact@1
+    inputs:
+      artifactName: $(ARTIFACT_NAME)
+      downloadPath: $(TAR_FOLDER_PATH)
+      buildType: specific
+      project: rust
+      pipeline: 8
+      buildVersionToDownload: specific
+      buildId: 200
+      # https://dev.azure.com/rust-lang-azure/rust/_build/results?buildId=145
 
   # - template: steps/macos.yml 
   - bash: $TAR_COMMAND -xf $TEMP/drop.tar
@@ -256,105 +256,112 @@ jobs:
         RUST_CONFIGURE_ARGS: --build=x86_64-pc-windows-msvc --enable-profiler
         ARTIFACT_NAME: x86_64-msvc-build
         SCRIPT: make ci-resume-subset-A
+        KEEP_STAGE: '--keep-stage 0'
       x86_64-msvc-B:
         MSYS_BITS: 64
         RUST_CONFIGURE_ARGS: --build=x86_64-pc-windows-msvc --enable-profiler
         ARTIFACT_NAME: x86_64-msvc-build
         SCRIPT: make ci-resume-subset-B
+        KEEP_STAGE: '--keep-stage 0 --keep-stage 1'
       x86_64-msvc-C:
         MSYS_BITS: 64
         RUST_CONFIGURE_ARGS: --build=x86_64-pc-windows-msvc --enable-profiler
         ARTIFACT_NAME: x86_64-msvc-build
         SCRIPT: make ci-resume-subset-C
+        KEEP_STAGE: '--keep-stage 0 --keep-stage 1 --keep-stage 2'
       x86_64-msvc-D:
         MSYS_BITS: 64
         RUST_CONFIGURE_ARGS: --build=x86_64-pc-windows-msvc --enable-profiler
         ARTIFACT_NAME: x86_64-msvc-build
         SCRIPT: make ci-resume-subset-D
+        KEEP_STAGE: '--keep-stage 0 --keep-stage 1 --keep-stage 2'
       x86_64-msvc-E:
         MSYS_BITS: 64
         RUST_CONFIGURE_ARGS: --build=x86_64-pc-windows-msvc --enable-profiler
         ARTIFACT_NAME: x86_64-msvc-build
         SCRIPT: make ci-resume-subset-E
+        KEEP_STAGE: '--keep-stage 0 --keep-stage 1 --keep-stage 2'
       x86_64-msvc-F:
         MSYS_BITS: 64
         RUST_CONFIGURE_ARGS: --build=x86_64-pc-windows-msvc --enable-profiler
         ARTIFACT_NAME: x86_64-msvc-build
         SCRIPT: make ci-resume-subset-F
+        KEEP_STAGE: '--keep-stage 0 --keep-stage 1 --keep-stage 2'
       x86_64-msvc-G:
         MSYS_BITS: 64
         RUST_CONFIGURE_ARGS: --build=x86_64-pc-windows-msvc --enable-profiler
         ARTIFACT_NAME: x86_64-msvc-build
         SCRIPT: make ci-resume-subset-G
+        KEEP_STAGE: '--keep-stage 0 --keep-stage 1 --keep-stage 2'
 
-# macOS JOBS
-- job: macOS
-  timeoutInMinutes: 600
-  variables:
-    TAR_COMMAND: gtar
-  pool:
-    vmImage: macos-10.13
-  steps:
-  - checkout: self
-    fetchDepth: 2
-  - template: steps/macos.yml  
-  strategy:
-    matrix:
-      x86_64-apple:
-        RUST_CHECK_TARGET: check
-        RUST_CONFIGURE_ARGS: --build=x86_64-apple-darwin --enable-sanitizers --enable-profiler --set rust.jemalloc
-        RUSTC_RETRY_LINKER_ON_SEGFAULT: 1
-        MACOSX_DEPLOYMENT_TARGET: 10.8
-        MACOSX_STD_DEPLOYMENT_TARGET: 10.7
-        NO_LLVM_ASSERTIONS: 1
-        NO_DEBUG_ASSERTIONS: 1
+# # macOS JOBS
+# - job: macOS
+#   timeoutInMinutes: 600
+#   variables:
+#     TAR_COMMAND: gtar
+#   pool:
+#     vmImage: macos-10.13
+#   steps:
+#   - checkout: self
+#     fetchDepth: 2
+#   - template: steps/macos.yml  
+#   strategy:
+#     matrix:
+#       x86_64-apple:
+#         RUST_CHECK_TARGET: check
+#         RUST_CONFIGURE_ARGS: --build=x86_64-apple-darwin --enable-sanitizers --enable-profiler --set rust.jemalloc
+#         RUSTC_RETRY_LINKER_ON_SEGFAULT: 1
+#         MACOSX_DEPLOYMENT_TARGET: 10.8
+#         MACOSX_STD_DEPLOYMENT_TARGET: 10.7
+#         NO_LLVM_ASSERTIONS: 1
+#         NO_DEBUG_ASSERTIONS: 1
 
-- job: macOS_build
-  timeoutInMinutes: 600
-  variables:
-    TAR_COMMAND: gtar
-  pool:
-    vmImage: macos-10.13
-  steps:
-  - checkout: self
-    fetchDepth: 2
-  - template: steps/macos.yml
-  - script: |
-      set -x
+# - job: macOS_build
+#   timeoutInMinutes: 600
+#   variables:
+#     TAR_COMMAND: gtar
+#   pool:
+#     vmImage: macos-10.13
+#   steps:
+#   - checkout: self
+#     fetchDepth: 2
+#   - template: steps/macos.yml
+#   - script: |
+#       set -x
 
-      git submodule
-      export SUBMODULES_EXCLUDES=$(git submodule | grep -Eow 'src/[^ ]+' | sed 's/\(.*\)/--exclude=\1\/\.git/')
-      echo $SUBMODULES_EXCLUDES
+#       git submodule
+#       export SUBMODULES_EXCLUDES=$(git submodule | grep -Eow 'src/[^ ]+' | sed 's/\(.*\)/--exclude=\1\/\.git/')
+#       echo $SUBMODULES_EXCLUDES
 
-      $TAR_COMMAND --exclude=.git $SUBMODULES_EXCLUDES -cf /tmp/drop.tar .
-  - task: PublishPipelineArtifact@0
-    inputs:
-      artifactName: $(System.JobDisplayName)
-      targetPath: '/tmp/drop.tar'
+#       $TAR_COMMAND --exclude=.git $SUBMODULES_EXCLUDES -cf /tmp/drop.tar .
+#   - task: PublishPipelineArtifact@0
+#     inputs:
+#       artifactName: $(System.JobDisplayName)
+#       targetPath: '/tmp/drop.tar'
 
-  strategy:
-    matrix:
-      # macOS builders. These are placed near the beginning because they are very
-      # slow to run.
+#   strategy:
+#     matrix:
+#       # macOS builders. These are placed near the beginning because they are very
+#       # slow to run.
 
-      # OSX builders running tests, these run the full test suite.
-      # NO_DEBUG_ASSERTIONS=1 to make them go faster, but also do have some
-      # runners that run `//ignore-debug` tests.
-      #
-      # Note that the compiler is compiled to target 10.8 here because the Xcode
-      # version that we're using, 8.2, cannot compile LLVM for OSX 10.7.
-      x86_64-apple-build:
-        RUST_CHECK_TARGET: check
-        RUST_CONFIGURE_ARGS: --build=x86_64-apple-darwin --enable-sanitizers --enable-profiler --set rust.jemalloc
-        RUSTC_RETRY_LINKER_ON_SEGFAULT: 1
-        MACOSX_DEPLOYMENT_TARGET: 10.8
-        MACOSX_STD_DEPLOYMENT_TARGET: 10.7
-        NO_LLVM_ASSERTIONS: 1
-        NO_DEBUG_ASSERTIONS: 1
-        SCRIPT: make ci-test-prepare
+#       # OSX builders running tests, these run the full test suite.
+#       # NO_DEBUG_ASSERTIONS=1 to make them go faster, but also do have some
+#       # runners that run `//ignore-debug` tests.
+#       #
+#       # Note that the compiler is compiled to target 10.8 here because the Xcode
+#       # version that we're using, 8.2, cannot compile LLVM for OSX 10.7.
+#       x86_64-apple-build:
+#         RUST_CHECK_TARGET: check
+#         RUST_CONFIGURE_ARGS: --build=x86_64-apple-darwin --enable-sanitizers --enable-profiler --set rust.jemalloc
+#         RUSTC_RETRY_LINKER_ON_SEGFAULT: 1
+#         MACOSX_DEPLOYMENT_TARGET: 10.8
+#         MACOSX_STD_DEPLOYMENT_TARGET: 10.7
+#         NO_LLVM_ASSERTIONS: 1
+#         NO_DEBUG_ASSERTIONS: 1
+#         SCRIPT: make ci-test-prepare
 
 - job: macOS_test
-  dependsOn: macOS_build
+  # dependsOn: macOS_build
   timeoutInMinutes: 600
   variables:
     TAR_COMMAND: gtar
@@ -369,19 +376,19 @@ jobs:
 
   - template: steps/show-disk-usage.yml
 
-  - task: DownloadPipelineArtifact@1
-    inputs:
-      artifactName: $(ARTIFACT_NAME)
-      downloadPath: $(System.DefaultWorkingDirectory)
   # - task: DownloadPipelineArtifact@1
   #   inputs:
   #     artifactName: $(ARTIFACT_NAME)
   #     downloadPath: $(System.DefaultWorkingDirectory)
-  #     buildType: specific
-  #     project: rust
-  #     pipeline: 8
-  #     buildVersionToDownload: specific
-  #     buildId: 183
+  - task: DownloadPipelineArtifact@1
+    inputs:
+      artifactName: $(ARTIFACT_NAME)
+      downloadPath: $(System.DefaultWorkingDirectory)
+      buildType: specific
+      project: rust
+      pipeline: 8
+      buildVersionToDownload: specific
+      buildId: 200
 
   # - template: steps/macos.yml 
   - template: steps/show-disk-usage.yml

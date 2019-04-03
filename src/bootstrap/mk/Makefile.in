@@ -125,6 +125,7 @@ TESTS_IN_G := \
 
 ci-resume-subset-A:
 	$(Q)$(BOOTSTRAP) test \
+		$(KEEP_STAGE) \
 		$(TESTS_IN_B:%=--exclude %) \
 		$(TESTS_IN_C:%=--exclude %) \
 		$(TESTS_IN_D:%=--exclude %) \
@@ -134,16 +135,16 @@ ci-resume-subset-A:
 		$(MIN_TEST:%=--exclude %) 
 
 ci-resume-subset-B:
-	$(Q)$(BOOTSTRAP) test $(TESTS_IN_B)
+	$(Q)$(BOOTSTRAP) test $(KEEP_STAGE) $(TESTS_IN_B)
 ci-resume-subset-C:
-	$(Q)$(BOOTSTRAP) test $(TESTS_IN_C)
+	$(Q)$(BOOTSTRAP) test $(KEEP_STAGE) $(TESTS_IN_C)
 ci-resume-subset-D:
-	$(Q)$(BOOTSTRAP) test $(TESTS_IN_D)
+	$(Q)$(BOOTSTRAP) test $(KEEP_STAGE) $(TESTS_IN_D)
 ci-resume-subset-E:
-	$(Q)$(BOOTSTRAP) test $(TESTS_IN_E)
+	$(Q)$(BOOTSTRAP) test $(KEEP_STAGE) $(TESTS_IN_E)
 ci-resume-subset-F:
-	$(Q)$(BOOTSTRAP) test $(TESTS_IN_F)
+	$(Q)$(BOOTSTRAP) test $(KEEP_STAGE) $(TESTS_IN_F)
 ci-resume-subset-G:
-	$(Q)$(BOOTSTRAP) test $(TESTS_IN_G)
+	$(Q)$(BOOTSTRAP) test $(KEEP_STAGE) $(TESTS_IN_G)
 
 .PHONY: dist
