@@ -71,7 +71,7 @@ jobs:
   variables:
     TAR_COMMAND: tar
     SKIP_PREP: 1
-    # KEEP_STAGE: '--keep-stage 0 --keep-stage 1'
+    KEEP_STAGE: '--keep-stage 0 --keep-stage 1'
   pool:
     vmImage: 'vs2017-win2016'
   steps:
@@ -256,43 +256,36 @@ jobs:
         RUST_CONFIGURE_ARGS: --build=x86_64-pc-windows-msvc --enable-profiler
         ARTIFACT_NAME: x86_64-msvc-build
         SCRIPT: make ci-resume-subset-A
-        KEEP_STAGE: '--keep-stage 0'
       x86_64-msvc-B:
         MSYS_BITS: 64
         RUST_CONFIGURE_ARGS: --build=x86_64-pc-windows-msvc --enable-profiler
         ARTIFACT_NAME: x86_64-msvc-build
         SCRIPT: make ci-resume-subset-B
-        KEEP_STAGE: '--keep-stage 0 --keep-stage 1'
       x86_64-msvc-C:
         MSYS_BITS: 64
         RUST_CONFIGURE_ARGS: --build=x86_64-pc-windows-msvc --enable-profiler
         ARTIFACT_NAME: x86_64-msvc-build
         SCRIPT: make ci-resume-subset-C
-        KEEP_STAGE: '--keep-stage 0 --keep-stage 1 --keep-stage 2'
       x86_64-msvc-D:
         MSYS_BITS: 64
         RUST_CONFIGURE_ARGS: --build=x86_64-pc-windows-msvc --enable-profiler
         ARTIFACT_NAME: x86_64-msvc-build
         SCRIPT: make ci-resume-subset-D
-        KEEP_STAGE: '--keep-stage 0 --keep-stage 1 --keep-stage 2'
       x86_64-msvc-E:
         MSYS_BITS: 64
         RUST_CONFIGURE_ARGS: --build=x86_64-pc-windows-msvc --enable-profiler
         ARTIFACT_NAME: x86_64-msvc-build
         SCRIPT: make ci-resume-subset-E
-        KEEP_STAGE: '--keep-stage 0 --keep-stage 1 --keep-stage 2'
       x86_64-msvc-F:
         MSYS_BITS: 64
         RUST_CONFIGURE_ARGS: --build=x86_64-pc-windows-msvc --enable-profiler
         ARTIFACT_NAME: x86_64-msvc-build
         SCRIPT: make ci-resume-subset-F
-        KEEP_STAGE: '--keep-stage 0 --keep-stage 1 --keep-stage 2'
       x86_64-msvc-G:
         MSYS_BITS: 64
         RUST_CONFIGURE_ARGS: --build=x86_64-pc-windows-msvc --enable-profiler
         ARTIFACT_NAME: x86_64-msvc-build
         SCRIPT: make ci-resume-subset-G
-        KEEP_STAGE: '--keep-stage 0 --keep-stage 1 --keep-stage 2'
 
 # # macOS JOBS
 # - job: macOS
