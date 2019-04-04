@@ -14,6 +14,7 @@ use rustc::ty::{self, TyCtxt, query::TyCtxtAt};
 use rustc::ty::layout::{self, LayoutOf, VariantIdx};
 use rustc::ty::subst::Subst;
 use rustc::traits::Reveal;
+use rustc::util::common::ErrorReported;
 use rustc_data_structures::fx::FxHashMap;
 
 use syntax::ast::Mutability;
@@ -22,7 +23,7 @@ use syntax::source_map::{Span, DUMMY_SP};
 use crate::interpret::{self,
     PlaceTy, MPlaceTy, MemPlace, OpTy, ImmTy, Immediate, Scalar, Pointer,
     RawConst, ConstValue,
-    EvalResult, EvalError, EvalErrorKind, GlobalId, EvalContext, StackPopCleanup,
+    EvalResult, EvalError, InterpError, GlobalId, InterpretCx, StackPopCleanup,
     Allocation, AllocId, MemoryKind,
     snapshot, RefTracking,
 };
@@ -34,7 +35,7 @@ const STEPS_UNTIL_DETECTOR_ENABLED: isize = 1_000_000;
 /// Should be a power of two for performance reasons.
 const DETECTOR_SNAPSHOT_PERIOD: isize = 256;
 
-/// The `EvalContext` is only meant to be used to do field and index projections into constants for
+/// The `InterpretCx` is only meant to be used to do field and index projections into constants for
 /// `simd_shuffle` and const patterns in match arms.
 ///
 /// The function containing the `match` that is currently being analyzed may have generic bounds
@@ -47,7 +48,7 @@ pub(crate) fn mk_eval_cx<'a, 'mir, 'tcx>(
     param_env: ty::ParamEnv<'tcx>,
 ) -> CompileTimeEvalContext<'a, 'mir, 'tcx> {
     debug!("mk_eval_cx: {:?}", param_env);
-    EvalContext::new(tcx.at(span), param_env, CompileTimeInterpreter::new())
+    InterpretCx::new(tcx.at(span), param_env, CompileTimeInterpreter::new())
 }
 
 pub(crate) fn eval_promoted<'a, 'mir, 'tcx>(
@@ -116,7 +117,7 @@ fn eval_body_and_ecx<'a, 'mir, 'tcx>(
     // and try improving it down the road when more information is available
     let span = tcx.def_span(cid.instance.def_id());
     let span = mir.map(|mir| mir.span).unwrap_or(span);
-    let mut ecx = EvalContext::new(tcx.at(span), param_env, CompileTimeInterpreter::new());
+    let mut ecx = InterpretCx::new(tcx.at(span), param_env, CompileTimeInterpreter::new());
     let r = eval_body_using_ecx(&mut ecx, cid, mir, param_env);
     (r, ecx)
 }
@@ -172,7 +173,7 @@ fn eval_body_using_ecx<'mir, 'tcx>(
 
 impl<'tcx> Into<EvalError<'tcx>> for ConstEvalError {
     fn into(self) -> EvalError<'tcx> {
-        EvalErrorKind::MachineError(self.to_string()).into()
+        InterpError::MachineError(self.to_string()).into()
     }
 }
 
@@ -292,7 +293,7 @@ impl<K: Hash + Eq, V> interpret::AllocMap<K, V> for FxHashMap<K, V> {
 }
 
 type CompileTimeEvalContext<'a, 'mir, 'tcx> =
-    EvalContext<'a, 'mir, 'tcx, CompileTimeInterpreter<'a, 'mir, 'tcx>>;
+    InterpretCx<'a, 'mir, 'tcx, CompileTimeInterpreter<'a, 'mir, 'tcx>>;
 
 impl interpret::MayLeak for ! {
     #[inline(always)]
@@ -317,12 +318,12 @@ impl<'a, 'mir, 'tcx> interpret::Machine<'a, 'mir, 'tcx>
     const STATIC_KIND: Option<!> = None; // no copying of statics allowed
 
     #[inline(always)]
-    fn enforce_validity(_ecx: &EvalContext<'a, 'mir, 'tcx, Self>) -> bool {
+    fn enforce_validity(_ecx: &InterpretCx<'a, 'mir, 'tcx, Self>) -> bool {
         false // for now, we don't enforce validity
     }
 
     fn find_fn(
-        ecx: &mut EvalContext<'a, 'mir, 'tcx, Self>,
+        ecx: &mut InterpretCx<'a, 'mir, 'tcx, Self>,
         instance: ty::Instance<'tcx>,
         args: &[OpTy<'tcx>],
         dest: Option<PlaceTy<'tcx>>,
@@ -350,7 +351,7 @@ impl<'a, 'mir, 'tcx> interpret::Machine<'a, 'mir, 'tcx>
         Ok(Some(match ecx.load_mir(instance.def) {
             Ok(mir) => mir,
             Err(err) => {
-                if let EvalErrorKind::NoMirFor(ref path) = err.kind {
+                if let InterpError::NoMirFor(ref path) = err.kind {
                     return Err(
                         ConstEvalError::NeedsRfc(format!("calling extern function `{}`", path))
                             .into(),
@@ -362,7 +363,7 @@ impl<'a, 'mir, 'tcx> interpret::Machine<'a, 'mir, 'tcx>
     }
 
     fn call_intrinsic(
-        ecx: &mut EvalContext<'a, 'mir, 'tcx, Self>,
+        ecx: &mut InterpretCx<'a, 'mir, 'tcx, Self>,
         instance: ty::Instance<'tcx>,
         args: &[OpTy<'tcx>],
         dest: PlaceTy<'tcx>,
@@ -378,7 +379,7 @@ impl<'a, 'mir, 'tcx> interpret::Machine<'a, 'mir, 'tcx>
     }
 
     fn ptr_op(
-        _ecx: &EvalContext<'a, 'mir, 'tcx, Self>,
+        _ecx: &InterpretCx<'a, 'mir, 'tcx, Self>,
         _bin_op: mir::BinOp,
         _left: ImmTy<'tcx>,
         _right: ImmTy<'tcx>,
@@ -406,7 +407,7 @@ impl<'a, 'mir, 'tcx> interpret::Machine<'a, 'mir, 'tcx>
     }
 
     fn box_alloc(
-        _ecx: &mut EvalContext<'a, 'mir, 'tcx, Self>,
+        _ecx: &mut InterpretCx<'a, 'mir, 'tcx, Self>,
         _dest: PlaceTy<'tcx>,
     ) -> EvalResult<'tcx> {
         Err(
@@ -414,7 +415,7 @@ impl<'a, 'mir, 'tcx> interpret::Machine<'a, 'mir, 'tcx>
         )
     }
 
-    fn before_terminator(ecx: &mut EvalContext<'a, 'mir, 'tcx, Self>) -> EvalResult<'tcx> {
+    fn before_terminator(ecx: &mut InterpretCx<'a, 'mir, 'tcx, Self>) -> EvalResult<'tcx> {
         {
             let steps = &mut ecx.machine.steps_since_detector_enabled;
 
@@ -440,7 +441,7 @@ impl<'a, 'mir, 'tcx> interpret::Machine<'a, 'mir, 'tcx>
 
     #[inline(always)]
     fn tag_new_allocation(
-        _ecx: &mut EvalContext<'a, 'mir, 'tcx, Self>,
+        _ecx: &mut InterpretCx<'a, 'mir, 'tcx, Self>,
         ptr: Pointer,
         _kind: MemoryKind<Self::MemoryKinds>,
     ) -> Pointer {
@@ -449,7 +450,7 @@ impl<'a, 'mir, 'tcx> interpret::Machine<'a, 'mir, 'tcx>
 
     #[inline(always)]
     fn stack_push(
-        _ecx: &mut EvalContext<'a, 'mir, 'tcx, Self>,
+        _ecx: &mut InterpretCx<'a, 'mir, 'tcx, Self>,
     ) -> EvalResult<'tcx> {
         Ok(())
     }
@@ -457,7 +458,7 @@ impl<'a, 'mir, 'tcx> interpret::Machine<'a, 'mir, 'tcx>
     /// Called immediately before a stack frame gets popped.
     #[inline(always)]
     fn stack_pop(
-        _ecx: &mut EvalContext<'a, 'mir, 'tcx, Self>,
+        _ecx: &mut InterpretCx<'a, 'mir, 'tcx, Self>,
         _extra: (),
     ) -> EvalResult<'tcx> {
         Ok(())
@@ -504,7 +505,7 @@ pub fn const_variant_index<'a, 'tcx>(
 }
 
 pub fn error_to_const_error<'a, 'mir, 'tcx>(
-    ecx: &EvalContext<'a, 'mir, 'tcx, CompileTimeInterpreter<'a, 'mir, 'tcx>>,
+    ecx: &InterpretCx<'a, 'mir, 'tcx, CompileTimeInterpreter<'a, 'mir, 'tcx>>,
     mut error: EvalError<'tcx>
 ) -> ConstEvalErr<'tcx> {
     error.print_backtrace();
@@ -641,16 +642,21 @@ pub fn const_eval_raw_provider<'a, 'tcx>(
         let err = error_to_const_error(&ecx, error);
         // errors in statics are always emitted as fatal errors
         if tcx.is_static(def_id).is_some() {
-            let reported_err = err.report_as_error(ecx.tcx,
-                                                   "could not evaluate static initializer");
             // Ensure that if the above error was either `TooGeneric` or `Reported`
             // an error must be reported.
-            if tcx.sess.err_count() == 0 {
-                tcx.sess.delay_span_bug(err.span,
+            let reported_err = tcx.sess.track_errors(|| {
+                err.report_as_error(ecx.tcx,
+                                    "could not evaluate static initializer")
+            });
+            match reported_err {
+                Ok(v) => {
+                    tcx.sess.delay_span_bug(err.span,
                                         &format!("static eval failure did not emit an error: {:#?}",
-                                                 reported_err));
+                                        v));
+                    v
+                },
+                Err(ErrorReported) => ErrorHandled::Reported,
             }
-            reported_err
         } else if def_id.is_local() {
             // constant defined in this crate, we can figure out a lint level!
             match tcx.describe_def(def_id) {
@@ -673,7 +679,7 @@ pub fn const_eval_raw_provider<'a, 'tcx>(
                 // any other kind of error will be reported to the user as a deny-by-default lint
                 _ => if let Some(p) = cid.promoted {
                     let span = tcx.optimized_mir(def_id).promoted[p].span;
-                    if let EvalErrorKind::ReferencedConstant = err.error {
+                    if let InterpError::ReferencedConstant = err.error {
                         err.report_as_error(
                             tcx.at(span),
                             "evaluation of constant expression failed",

@@ -16,7 +16,6 @@
 #![feature(pattern)]
 #![feature(range_is_empty)]
 #![feature(raw)]
-#![feature(refcell_replace_swap)]
 #![feature(slice_patterns)]
 #![feature(sort_internals)]
 #![feature(specialization)]
@@ -31,6 +30,7 @@
 #![feature(slice_internals)]
 #![feature(slice_partition_dedup)]
 #![feature(copy_within)]
+#![feature(int_error_matching)]
 
 extern crate core;
 extern crate test;

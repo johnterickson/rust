@@ -1697,7 +1697,12 @@ impl<'a> hir::lowering::Resolver for Resolver<'a> {
         components: &[&str],
         is_value: bool
     ) -> hir::Path {
-        let segments = iter::once(keywords::PathRoot.ident())
+        let root = if crate_root.is_some() {
+            keywords::PathRoot
+        } else {
+            keywords::Crate
+        };
+        let segments = iter::once(root.ident())
             .chain(
                 crate_root.into_iter()
                     .chain(components.iter().cloned())
@@ -1733,7 +1738,6 @@ impl<'a> Resolver<'a> {
     /// just that an error occurred.
     pub fn resolve_str_path_error(&mut self, span: Span, path_str: &str, is_value: bool)
         -> Result<hir::Path, ()> {
-        use std::iter;
         let mut errored = false;
 
         let path = if path_str.starts_with("::") {

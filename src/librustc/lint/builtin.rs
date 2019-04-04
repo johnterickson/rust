@@ -354,7 +354,7 @@ declare_lint! {
 
 declare_lint! {
     pub DUPLICATE_MATCHER_BINDING_NAME,
-    Warn,
+    Deny,
     "duplicate macro matcher binding name"
 }
 
@@ -464,6 +464,7 @@ impl LintPass for HardwiredLints {
             DEPRECATED_IN_FUTURE,
             AMBIGUOUS_ASSOCIATED_ITEMS,
             NESTED_IMPL_TRAIT,
+            DUPLICATE_MATCHER_BINDING_NAME,
         )
     }
 }
@@ -482,6 +483,7 @@ pub enum BuiltinLintDiagnostics {
     UnknownCrateTypes(Span, String, String),
     UnusedImports(String, Vec<(Span, String)>),
     NestedImplTrait { outer_impl_trait_span: Span, inner_impl_trait_span: Span },
+    RedundantImport(Vec<(Span, bool)>, ast::Ident),
 }
 
 impl BuiltinLintDiagnostics {
@@ -577,6 +579,15 @@ impl BuiltinLintDiagnostics {
             } => {
                 db.span_label(outer_impl_trait_span, "outer `impl Trait`");
                 db.span_label(inner_impl_trait_span, "nested `impl Trait` here");
+            }
+            BuiltinLintDiagnostics::RedundantImport(spans, ident) => {
+                for (span, is_imported) in spans {
+                    let introduced = if is_imported { "imported" } else { "defined" };
+                    db.span_label(
+                        span,
+                        format!("the item `{}` is already {} here", ident, introduced)
+                    );
+                }
             }
         }
     }

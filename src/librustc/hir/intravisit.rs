@@ -163,7 +163,7 @@ pub trait Visitor<'v> : Sized {
     /// but cannot supply a `Map`; see `nested_visit_map` for advice.
     #[allow(unused_variables)]
     fn visit_nested_item(&mut self, id: ItemId) {
-        let opt_item = self.nested_visit_map().inter().map(|map| map.expect_item(id.id));
+        let opt_item = self.nested_visit_map().inter().map(|map| map.expect_item_by_hir_id(id.id));
         if let Some(item) = opt_item {
             self.visit_item(item);
         }
@@ -485,30 +485,34 @@ pub fn walk_item<'v, V: Visitor<'v>>(visitor: &mut V, item: &'v Item) {
         ItemKind::GlobalAsm(_) => {
             visitor.visit_id(item.hir_id);
         }
-        ItemKind::Ty(ref typ, ref type_parameters) => {
+        ItemKind::Ty(ref ty, ref generics) => {
             visitor.visit_id(item.hir_id);
-            visitor.visit_ty(typ);
-            visitor.visit_generics(type_parameters)
+            visitor.visit_ty(ty);
+            visitor.visit_generics(generics)
         }
-        ItemKind::Existential(ExistTy { ref generics, ref bounds, impl_trait_fn: _ }) => {
+        ItemKind::Existential(ExistTy {
+            ref generics,
+            ref bounds,
+            ..
+        }) => {
             visitor.visit_id(item.hir_id);
             walk_generics(visitor, generics);
             walk_list!(visitor, visit_param_bound, bounds);
         }
-        ItemKind::Enum(ref enum_definition, ref type_parameters) => {
-            visitor.visit_generics(type_parameters);
+        ItemKind::Enum(ref enum_definition, ref generics) => {
+            visitor.visit_generics(generics);
             // `visit_enum_def()` takes care of visiting the `Item`'s `HirId`.
-            visitor.visit_enum_def(enum_definition, type_parameters, item.hir_id, item.span)
+            visitor.visit_enum_def(enum_definition, generics, item.hir_id, item.span)
         }
         ItemKind::Impl(
             ..,
-            ref type_parameters,
+            ref generics,
             ref opt_trait_reference,
             ref typ,
             ref impl_item_refs
         ) => {
             visitor.visit_id(item.hir_id);
-            visitor.visit_generics(type_parameters);
+            visitor.visit_generics(generics);
             walk_list!(visitor, visit_trait_ref, opt_trait_reference);
             visitor.visit_ty(typ);
             walk_list!(visitor, visit_impl_item_ref, impl_item_refs);

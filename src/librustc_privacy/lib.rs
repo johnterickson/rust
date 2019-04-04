@@ -244,7 +244,26 @@ fn def_id_visibility<'a, 'tcx>(tcx: TyCtxt<'a, 'tcx, 'tcx>, def_id: DefId)
                     match tcx.hir().get_by_hir_id(parent_hir_id) {
                         Node::Variant(..) => {
                             let parent_did = tcx.hir().local_def_id_from_hir_id(parent_hir_id);
-                            return def_id_visibility(tcx, parent_did);
+                            let (mut ctor_vis, mut span, mut descr) = def_id_visibility(
+                                tcx, parent_did,
+                            );
+
+                            let adt_def = tcx.adt_def(tcx.hir().get_parent_did_by_hir_id(hir_id));
+                            let ctor_did = tcx.hir().local_def_id_from_hir_id(
+                                vdata.ctor_hir_id().unwrap());
+                            let variant = adt_def.variant_with_ctor_id(ctor_did);
+
+                            if variant.is_field_list_non_exhaustive() &&
+                                ctor_vis == ty::Visibility::Public
+                            {
+                                ctor_vis = ty::Visibility::Restricted(
+                                    DefId::local(CRATE_DEF_INDEX));
+                                let attrs = tcx.get_attrs(variant.def_id);
+                                span = attr::find_by_name(&attrs, "non_exhaustive").unwrap().span;
+                                descr = "crate-visible";
+                            }
+
+                            return (ctor_vis, span, descr);
                         }
                         Node::Item(..) => {
                             let item = match tcx.hir().get_by_hir_id(parent_hir_id) {
@@ -472,8 +491,8 @@ impl<'a, 'tcx> EmbargoVisitor<'a, 'tcx> {
              {
                 if let hir::ItemKind::Mod(m) = &item.node {
                     for item_id in m.item_ids.as_ref() {
-                        let item = self.tcx.hir().expect_item(item_id.id);
-                        let def_id = self.tcx.hir().local_def_id(item_id.id);
+                        let item = self.tcx.hir().expect_item_by_hir_id(item_id.id);
+                        let def_id = self.tcx.hir().local_def_id_from_hir_id(item_id.id);
                         if !self.tcx.hygienic_eq(segment.ident, item.ident, def_id) { continue; }
                         if let hir::ItemKind::Use(..) = item.node {
                             self.update(item.hir_id, Some(AccessLevel::Exported));
@@ -737,8 +756,7 @@ impl<'a, 'tcx> Visitor<'tcx> for EmbargoVisitor<'a, 'tcx> {
                 unreachable!()
             };
             for id in &module.item_ids {
-                let hir_id = self.tcx.hir().node_to_hir_id(id.id);
-                self.update(hir_id, level);
+                self.update(id.id, level);
             }
             let def_id = self.tcx.hir().local_def_id_from_hir_id(module_id);
             if let Some(exports) = self.tcx.module_exports(def_id) {
@@ -1054,8 +1072,8 @@ impl<'a, 'tcx> Visitor<'tcx> for TypePrivacyVisitor<'a, 'tcx> {
             hir::ExprKind::MethodCall(_, span, _) => {
                 // Method calls have to be checked specially.
                 self.span = span;
-                if let Some(def) = self.tables.type_dependent_defs().get(expr.hir_id) {
-                    if self.visit(self.tcx.type_of(def.def_id())) {
+                if let Some(def_id) = self.tables.type_dependent_def_id(expr.hir_id) {
+                    if self.visit(self.tcx.type_of(def_id)) {
                         return;
                     }
                 } else {
@@ -1084,7 +1102,7 @@ impl<'a, 'tcx> Visitor<'tcx> for TypePrivacyVisitor<'a, 'tcx> {
                 _ => None,
             }
             hir::QPath::TypeRelative(..) => {
-                self.tables.type_dependent_defs().get(id).cloned()
+                self.tables.type_dependent_def(id)
             }
         };
         if let Some(def) = def {
@@ -1790,8 +1808,7 @@ fn check_mod_privacy<'tcx>(tcx: TyCtxt<'_, 'tcx, 'tcx>, module_def_id: DefId) {
         current_item: hir::DUMMY_HIR_ID,
         empty_tables: &empty_tables,
     };
-    let (module, span, node_id) = tcx.hir().get_module(module_def_id);
-    let hir_id = tcx.hir().node_to_hir_id(node_id);
+    let (module, span, hir_id) = tcx.hir().get_module(module_def_id);
     intravisit::walk_mod(&mut visitor, module, hir_id);
 
     // Check privacy of explicitly written types and traits as well as

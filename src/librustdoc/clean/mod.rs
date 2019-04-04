@@ -278,16 +278,16 @@ impl Clean<ExternalCrate> for CrateNum {
         };
         let primitives = if root.is_local() {
             cx.tcx.hir().krate().module.item_ids.iter().filter_map(|&id| {
-                let item = cx.tcx.hir().expect_item(id.id);
+                let item = cx.tcx.hir().expect_item_by_hir_id(id.id);
                 match item.node {
                     hir::ItemKind::Mod(_) => {
-                        as_primitive(Def::Mod(cx.tcx.hir().local_def_id(id.id)))
+                        as_primitive(Def::Mod(cx.tcx.hir().local_def_id_from_hir_id(id.id)))
                     }
                     hir::ItemKind::Use(ref path, hir::UseKind::Single)
                     if item.vis.node.is_pub() => {
                         as_primitive(path.def).map(|(_, prim, attrs)| {
                             // Pretend the primitive is local.
-                            (cx.tcx.hir().local_def_id(id.id), prim, attrs)
+                            (cx.tcx.hir().local_def_id_from_hir_id(id.id), prim, attrs)
                         })
                     }
                     _ => None
@@ -320,15 +320,15 @@ impl Clean<ExternalCrate> for CrateNum {
         };
         let keywords = if root.is_local() {
             cx.tcx.hir().krate().module.item_ids.iter().filter_map(|&id| {
-                let item = cx.tcx.hir().expect_item(id.id);
+                let item = cx.tcx.hir().expect_item_by_hir_id(id.id);
                 match item.node {
                     hir::ItemKind::Mod(_) => {
-                        as_keyword(Def::Mod(cx.tcx.hir().local_def_id(id.id)))
+                        as_keyword(Def::Mod(cx.tcx.hir().local_def_id_from_hir_id(id.id)))
                     }
                     hir::ItemKind::Use(ref path, hir::UseKind::Single)
                     if item.vis.node.is_pub() => {
                         as_keyword(path.def).map(|(_, prim, attrs)| {
-                            (cx.tcx.hir().local_def_id(id.id), prim, attrs)
+                            (cx.tcx.hir().local_def_id_from_hir_id(id.id), prim, attrs)
                         })
                     }
                     _ => None
@@ -420,6 +420,9 @@ impl Item {
     }
     pub fn is_enum(&self) -> bool {
         self.type_() == ItemType::Enum
+    }
+    pub fn is_variant(&self) -> bool {
+        self.type_() == ItemType::Variant
     }
     pub fn is_associated_type(&self) -> bool {
         self.type_() == ItemType::AssociatedType
@@ -1766,9 +1769,13 @@ fn get_real_types(
     generics: &Generics,
     arg: &Type,
     cx: &DocContext<'_>,
+    recurse: i32,
 ) -> FxHashSet<Type> {
     let arg_s = arg.to_string();
     let mut res = FxHashSet::default();
+    if recurse >= 10 { // FIXME: remove this whole recurse thing when the recursion bug is fixed
+        return res;
+    }
     if arg.is_full_generic() {
         if let Some(where_pred) = generics.where_predicates.iter().find(|g| {
             match g {
@@ -1785,7 +1792,7 @@ fn get_real_types(
                                 continue
                             }
                             if let Some(ty) = x.get_type(cx) {
-                                let adds = get_real_types(generics, &ty, cx);
+                                let adds = get_real_types(generics, &ty, cx, recurse + 1);
                                 if !adds.is_empty() {
                                     res.extend(adds);
                                 } else if !ty.is_full_generic() {
@@ -1803,7 +1810,7 @@ fn get_real_types(
         }) {
             for bound in bound.get_bounds().unwrap_or_else(|| &[]) {
                 if let Some(ty) = bound.get_trait_type() {
-                    let adds = get_real_types(generics, &ty, cx);
+                    let adds = get_real_types(generics, &ty, cx, recurse + 1);
                     if !adds.is_empty() {
                         res.extend(adds);
                     } else if !ty.is_full_generic() {
@@ -1817,7 +1824,7 @@ fn get_real_types(
         if let Some(gens) = arg.generics() {
             for gen in gens.iter() {
                 if gen.is_full_generic() {
-                    let adds = get_real_types(generics, gen, cx);
+                    let adds = get_real_types(generics, gen, cx, recurse + 1);
                     if !adds.is_empty() {
                         res.extend(adds);
                     }
@@ -1844,7 +1851,7 @@ pub fn get_all_types(
         if arg.type_.is_self_type() {
             continue;
         }
-        let args = get_real_types(generics, &arg.type_, cx);
+        let args = get_real_types(generics, &arg.type_, cx, 0);
         if !args.is_empty() {
             all_types.extend(args);
         } else {
@@ -1854,7 +1861,7 @@ pub fn get_all_types(
 
     let ret_types = match decl.output {
         FunctionRetTy::Return(ref return_type) => {
-            let mut ret = get_real_types(generics, &return_type, cx);
+            let mut ret = get_real_types(generics, &return_type, cx, 0);
             if ret.is_empty() {
                 ret.insert(return_type.clone());
             }
@@ -2762,7 +2769,7 @@ impl Clean<Type> for hir::Ty {
             },
             TyKind::Tup(ref tys) => Tuple(tys.clean(cx)),
             TyKind::Def(item_id, _) => {
-                let item = cx.tcx.hir().expect_item(item_id.id);
+                let item = cx.tcx.hir().expect_item_by_hir_id(item_id.id);
                 if let hir::ItemKind::Existential(ref ty) = item.node {
                     ImplTrait(ty.bounds.clean(cx))
                 } else {
@@ -4393,10 +4400,10 @@ pub fn path_to_def_local(tcx: &TyCtxt<'_, '_, '_>, path: &[&str]) -> Option<DefI
         let segment = path_it.next()?;
 
         for item_id in mem::replace(&mut items, HirVec::new()).iter() {
-            let item = tcx.hir().expect_item(item_id.id);
+            let item = tcx.hir().expect_item_by_hir_id(item_id.id);
             if item.ident.name == *segment {
                 if path_it.peek().is_none() {
-                    return Some(tcx.hir().local_def_id(item_id.id))
+                    return Some(tcx.hir().local_def_id_from_hir_id(item_id.id))
                 }
 
                 items = match &item.node {

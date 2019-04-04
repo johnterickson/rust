@@ -93,8 +93,8 @@ impl RWLock {
     #[inline]
     unsafe fn __read_unlock(
         &self,
-        mut rguard: SpinMutexGuard<WaitVariable<Option<NonZeroUsize>>>,
-        wguard: SpinMutexGuard<WaitVariable<bool>>,
+        mut rguard: SpinMutexGuard<'_, WaitVariable<Option<NonZeroUsize>>>,
+        wguard: SpinMutexGuard<'_, WaitVariable<bool>>,
     ) {
         *rguard.lock_var_mut() = NonZeroUsize::new(rguard.lock_var().unwrap().get() - 1);
         if rguard.lock_var().is_some() {
@@ -105,7 +105,7 @@ impl RWLock {
                 *wguard.lock_var_mut() = true;
             } else {
                 // No writers were waiting, the lock is released
-                assert!(rguard.queue_empty());
+                rtassert!(rguard.queue_empty());
             }
         }
     }
@@ -120,8 +120,8 @@ impl RWLock {
     #[inline]
     unsafe fn __write_unlock(
         &self,
-        rguard: SpinMutexGuard<WaitVariable<Option<NonZeroUsize>>>,
-        wguard: SpinMutexGuard<WaitVariable<bool>>,
+        rguard: SpinMutexGuard<'_, WaitVariable<Option<NonZeroUsize>>>,
+        wguard: SpinMutexGuard<'_, WaitVariable<bool>>,
     ) {
         if let Err(mut wguard) = WaitQueue::notify_one(wguard) {
             // No writers waiting, release the write lock
@@ -268,7 +268,7 @@ mod tests {
 
         #[inline(never)]
         unsafe fn rwlock_new(init: &mut MaybeUninit<RWLock>) {
-            init.set(RWLock::new());
+            init.write(RWLock::new());
         }
 
         unsafe {
@@ -280,7 +280,7 @@ mod tests {
             let mut init = MaybeUninit::<RWLock>::zeroed();
             rwlock_new(&mut init);
             assert_eq!(
-                mem::transmute::<_, [u8; 128]>(init.into_initialized()).as_slice(),
+                mem::transmute::<_, [u8; 128]>(init.assume_init()).as_slice(),
                 RWLOCK_INIT
             )
         };

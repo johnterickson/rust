@@ -2,7 +2,7 @@ use rustc::middle::lang_items;
 use rustc::ty::{self, Ty, TypeFoldable};
 use rustc::ty::layout::{self, LayoutOf, HasTyCtxt};
 use rustc::mir::{self, Place, PlaceBase, Static, StaticKind};
-use rustc::mir::interpret::EvalErrorKind;
+use rustc::mir::interpret::InterpError;
 use rustc_target::abi::call::{ArgType, FnType, PassMode, IgnoreMode};
 use rustc_target::spec::abi::Abi;
 use rustc_mir::monomorphize;
@@ -20,7 +20,7 @@ use syntax_pos::Pos;
 
 use super::{FunctionCx, LocalRef};
 use super::place::PlaceRef;
-use super::operand::{OperandValue, OperandRef};
+use super::operand::OperandRef;
 use super::operand::OperandValue::{Pair, Ref, Immediate};
 
 /// Used by `FunctionCx::codegen_terminator` for emitting common patterns
@@ -214,17 +214,13 @@ impl<'a, 'tcx: 'a, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
             }
         } else {
             let (otherwise, targets) = targets.split_last().unwrap();
-            let switch = bx.switch(discr.immediate(),
-                                   helper.llblock(self, *otherwise),
-                                   values.len());
-            let switch_llty = bx.immediate_backend_type(
-                bx.layout_of(switch_ty)
+            bx.switch(
+                discr.immediate(),
+                helper.llblock(self, *otherwise),
+                values.iter().zip(targets).map(|(&value, target)| {
+                    (value, helper.llblock(self, *target))
+                })
             );
-            for (&value, target) in values.iter().zip(targets) {
-                let llval = bx.const_uint_big(switch_llty, value);
-                let llbb = helper.llblock(self, *target);
-                bx.add_case(switch, llval, llbb)
-            }
         }
     }
 
@@ -369,7 +365,7 @@ impl<'a, 'tcx: 'a, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
         // checked operation, just a comparison with the minimum
         // value, so we have to check for the assert message.
         if !bx.check_overflow() {
-            if let mir::interpret::EvalErrorKind::OverflowNeg = *msg {
+            if let mir::interpret::InterpError::OverflowNeg = *msg {
                 const_cond = Some(expected);
             }
         }
@@ -399,43 +395,37 @@ impl<'a, 'tcx: 'a, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
         // Get the location information.
         let loc = bx.sess().source_map().lookup_char_pos(span.lo());
         let filename = Symbol::intern(&loc.file.name.to_string()).as_str();
-        let filename = bx.const_str_slice(filename);
         let line = bx.const_u32(loc.line as u32);
         let col = bx.const_u32(loc.col.to_usize() as u32 + 1);
-        let align = self.cx.tcx().data_layout.aggregate_align.abi
-            .max(self.cx.tcx().data_layout.i32_align.abi)
-            .max(self.cx.tcx().data_layout.pointer_align.abi);
 
         // Put together the arguments to the panic entry point.
         let (lang_item, args) = match *msg {
-            EvalErrorKind::BoundsCheck { ref len, ref index } => {
+            InterpError::BoundsCheck { ref len, ref index } => {
                 let len = self.codegen_operand(&mut bx, len).immediate();
                 let index = self.codegen_operand(&mut bx, index).immediate();
 
-                let file_line_col = bx.const_struct(&[filename, line, col], false);
-                let file_line_col = bx.static_addr_of(
-                    file_line_col,
-                    align,
-                    Some("panic_bounds_check_loc")
+                let file_line_col = bx.static_panic_msg(
+                    None,
+                    filename,
+                    line,
+                    col,
+                    "panic_bounds_check_loc",
                 );
                 (lang_items::PanicBoundsCheckFnLangItem,
-                 vec![file_line_col, index, len])
+                    vec![file_line_col, index, len])
             }
             _ => {
                 let str = msg.description();
                 let msg_str = Symbol::intern(str).as_str();
-                let msg_str = bx.const_str_slice(msg_str);
-                let msg_file_line_col = bx.const_struct(
-                    &[msg_str, filename, line, col],
-                    false
-                );
-                let msg_file_line_col = bx.static_addr_of(
-                    msg_file_line_col,
-                    align,
-                    Some("panic_loc")
+                let msg_file_line_col = bx.static_panic_msg(
+                    Some(msg_str),
+                    filename,
+                    line,
+                    col,
+                    "panic_loc",
                 );
                 (lang_items::PanicFnLangItem,
-                 vec![msg_file_line_col])
+                    vec![msg_file_line_col])
             }
         };
 
@@ -539,27 +529,20 @@ impl<'a, 'tcx: 'a, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
             if layout.abi.is_uninhabited() {
                 let loc = bx.sess().source_map().lookup_char_pos(span.lo());
                 let filename = Symbol::intern(&loc.file.name.to_string()).as_str();
-                let filename = bx.const_str_slice(filename);
                 let line = bx.const_u32(loc.line as u32);
                 let col = bx.const_u32(loc.col.to_usize() as u32 + 1);
-                let align = self.cx.tcx().data_layout.aggregate_align.abi
-                    .max(self.cx.tcx().data_layout.i32_align.abi)
-                    .max(self.cx.tcx().data_layout.pointer_align.abi);
 
                 let str = format!(
                     "Attempted to instantiate uninhabited type {}",
                     ty
                 );
                 let msg_str = Symbol::intern(&str).as_str();
-                let msg_str = bx.const_str_slice(msg_str);
-                let msg_file_line_col = bx.const_struct(
-                    &[msg_str, filename, line, col],
-                    false,
-                );
-                let msg_file_line_col = bx.static_addr_of(
-                    msg_file_line_col,
-                    align,
-                    Some("panic_loc"),
+                let msg_file_line_col = bx.static_panic_msg(
+                    Some(msg_str),
+                    filename,
+                    line,
+                    col,
+                    "panic_loc",
                 );
 
                 // Obtain the panic entry point.
@@ -657,7 +640,7 @@ impl<'a, 'tcx: 'a, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                             span_bug!(span, "shuffle indices must be constant");
                         }
                         mir::Operand::Constant(ref constant) => {
-                            let c = self.eval_mir_constant(&bx, constant);
+                            let c = self.eval_mir_constant(constant);
                             let (llval, ty) = self.simd_shuffle_indices(
                                 &bx,
                                 constant.span,
@@ -712,18 +695,7 @@ impl<'a, 'tcx: 'a, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
             // an "spoofed" `VaList`. This argument is ignored, but we need to
             // populate it with a dummy operand so that the users real arguments
             // are not overwritten.
-            let i = if sig.c_variadic && last_arg_idx.map(|x| x == i).unwrap_or(false) {
-                let layout = match self.cx.tcx().lang_items().va_list() {
-                    Some(did) => bx.cx().layout_of(bx.tcx().type_of(did)),
-                    None => bug!("`va_list` language item required for C-variadics"),
-                };
-                let op = OperandRef {
-                    val: OperandValue::Immediate(
-                        bx.cx().const_undef(bx.cx().immediate_backend_type(layout)
-                    )),
-                    layout: layout,
-                };
-                self.codegen_argument(&mut bx, op, &mut llargs, &fn_ty.args[i]);
+            let i = if sig.c_variadic && last_arg_idx.map(|x| i >= x).unwrap_or(false) {
                 if i + 1 < fn_ty.args.len() {
                     i + 1
                 } else {

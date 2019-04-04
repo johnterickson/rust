@@ -414,7 +414,7 @@ impl<'a, 'gcx, 'tcx> TyCtxt<'a, 'gcx, 'tcx> {
             return result;
         }
 
-        if !dep_node.kind.is_input() {
+        if !dep_node.kind.is_eval_always() {
             // The diagnostics for this query will be
             // promoted to the current session during
             // try_mark_green(), so we can ignore them here.
@@ -601,9 +601,13 @@ impl<'a, 'gcx, 'tcx> TyCtxt<'a, 'gcx, 'tcx> {
     pub(super) fn ensure_query<Q: QueryDescription<'gcx>>(self, key: Q::Key) -> () {
         let dep_node = Q::to_dep_node(self, &key);
 
-        // Ensuring an "input" or anonymous query makes no sense
+        if dep_node.kind.is_eval_always() {
+            let _ = self.get_query::<Q>(DUMMY_SP, key);
+            return;
+        }
+
+        // Ensuring an anonymous query makes no sense
         assert!(!dep_node.kind.is_anon());
-        assert!(!dep_node.kind.is_input());
         if self.dep_graph.try_mark_green_and_read(self, &dep_node).is_none() {
             // A None return from `try_mark_green_and_read` means that this is either
             // a new dep node or that the dep node has already been marked red.
@@ -1213,7 +1217,7 @@ pub fn force_from_dep_node<'tcx>(
         DepKind::Layout |
         DepKind::ConstEval |
         DepKind::ConstEvalRaw |
-        DepKind::InstanceSymbolName |
+        DepKind::SymbolName |
         DepKind::MirShim |
         DepKind::BorrowCheckKrate |
         DepKind::Specializes |
@@ -1262,6 +1266,7 @@ pub fn force_from_dep_node<'tcx>(
         DepKind::MirBorrowCheck => { force!(mir_borrowck, def_id!()); }
         DepKind::UnsafetyCheckResult => { force!(unsafety_check_result, def_id!()); }
         DepKind::UnsafeDeriveOnReprPacked => { force!(unsafe_derive_on_repr_packed, def_id!()); }
+        DepKind::LintMod => { force!(lint_mod, def_id!()); }
         DepKind::CheckModAttrs => { force!(check_mod_attrs, def_id!()); }
         DepKind::CheckModLoops => { force!(check_mod_loops, def_id!()); }
         DepKind::CheckModUnstableApiUsage => { force!(check_mod_unstable_api_usage, def_id!()); }
@@ -1299,7 +1304,6 @@ pub fn force_from_dep_node<'tcx>(
         DepKind::TypeckTables => { force!(typeck_tables_of, def_id!()); }
         DepKind::UsedTraitImports => { force!(used_trait_imports, def_id!()); }
         DepKind::HasTypeckTables => { force!(has_typeck_tables, def_id!()); }
-        DepKind::SymbolName => { force!(def_symbol_name, def_id!()); }
         DepKind::SpecializationGraph => { force!(specialization_graph_of, def_id!()); }
         DepKind::ObjectSafety => { force!(is_object_safe, def_id!()); }
         DepKind::TraitImpls => { force!(trait_impls_of, def_id!()); }
@@ -1481,7 +1485,6 @@ impl_load_from_cache!(
     BorrowCheck => borrowck,
     MirBorrowCheck => mir_borrowck,
     mir_const_qualif => mir_const_qualif,
-    SymbolName => def_symbol_name,
     ConstIsRvaluePromotableToStatic => const_is_rvalue_promotable_to_static,
     CheckMatch => check_match,
     type_of => type_of,

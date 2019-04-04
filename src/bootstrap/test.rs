@@ -1284,6 +1284,10 @@ impl Step for Compiletest {
             cmd.arg("--android-cross-path").arg("");
         }
 
+        if builder.config.cmd.rustfix_coverage() {
+            cmd.arg("--rustfix-coverage");
+        }
+
         builder.ci_env.force_coloring_in_ci(&mut cmd);
 
         let _folder = builder.fold_output(|| format!("test_{}", suite));
@@ -1421,6 +1425,7 @@ test_book!(
     EmbeddedBook, "src/doc/embedded-book", "embedded-book", default=false;
     TheBook, "src/doc/book", "book", default=false;
     UnstableBook, "src/doc/unstable-book", "unstable-book", default=true;
+    EditionGuide, "src/doc/edition-guide", "edition-guide", default=false;
 );
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]

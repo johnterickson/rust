@@ -92,7 +92,7 @@ use rustc::hir::intravisit::{self, Visitor, NestedVisitorMap};
 use rustc::hir::itemlikevisit::ItemLikeVisitor;
 use crate::middle::lang_items;
 use crate::namespace::Namespace;
-use rustc::infer::{self, InferCtxt, InferOk, InferResult, RegionVariableOrigin};
+use rustc::infer::{self, InferCtxt, InferOk, InferResult};
 use rustc::infer::canonical::{Canonical, OriginalQueryValues, QueryResponse};
 use rustc_data_structures::indexed_vec::Idx;
 use rustc_data_structures::sync::Lrc;
@@ -246,9 +246,6 @@ pub enum Expectation<'tcx> {
     /// We know nothing about what type this expression should have.
     NoExpectation,
 
-    /// This expression is an `if` condition, it must resolve to `bool`.
-    ExpectIfCondition,
-
     /// This expression should have the type given (or some subtype).
     ExpectHasType(Ty<'tcx>),
 
@@ -328,7 +325,6 @@ impl<'a, 'gcx, 'tcx> Expectation<'tcx> {
     fn resolve(self, fcx: &FnCtxt<'a, 'gcx, 'tcx>) -> Expectation<'tcx> {
         match self {
             NoExpectation => NoExpectation,
-            ExpectIfCondition => ExpectIfCondition,
             ExpectCastableToType(t) => {
                 ExpectCastableToType(fcx.resolve_type_vars_if_possible(&t))
             }
@@ -344,7 +340,6 @@ impl<'a, 'gcx, 'tcx> Expectation<'tcx> {
     fn to_option(self, fcx: &FnCtxt<'a, 'gcx, 'tcx>) -> Option<Ty<'tcx>> {
         match self.resolve(fcx) {
             NoExpectation => None,
-            ExpectIfCondition => Some(fcx.tcx.types.bool),
             ExpectCastableToType(ty) |
             ExpectHasType(ty) |
             ExpectRvalueLikeUnsized(ty) => Some(ty),
@@ -358,7 +353,6 @@ impl<'a, 'gcx, 'tcx> Expectation<'tcx> {
     fn only_has_type(self, fcx: &FnCtxt<'a, 'gcx, 'tcx>) -> Option<Ty<'tcx>> {
         match self.resolve(fcx) {
             ExpectHasType(ty) => Some(ty),
-            ExpectIfCondition => Some(fcx.tcx.types.bool),
             NoExpectation | ExpectCastableToType(_) | ExpectRvalueLikeUnsized(_) => None,
         }
     }
@@ -2550,7 +2544,7 @@ impl<'a, 'gcx, 'tcx> FnCtxt<'a, 'gcx, 'tcx> {
             Neither if self.type_var_diverges(ty) => self.tcx.mk_diverging_default(),
             Neither => return false,
         };
-        debug!("default_type_parameters: defaulting `{:?}` to `{:?}`", ty, fallback);
+        debug!("fallback_if_possible: defaulting `{:?}` to `{:?}`", ty, fallback);
         self.demand_eqtype(syntax_pos::DUMMY_SP, ty, fallback);
         true
     }
@@ -3097,8 +3091,7 @@ impl<'a, 'gcx, 'tcx> FnCtxt<'a, 'gcx, 'tcx> {
                         _ => None
                     }
                 });
-                opt_ty.unwrap_or_else(
-                    || tcx.mk_int_var(self.next_int_var_id()))
+                opt_ty.unwrap_or_else(|| self.next_int_var())
             }
             ast::LitKind::Float(_, t) => tcx.mk_mach_float(t),
             ast::LitKind::FloatUnsuffixed(_) => {
@@ -3108,8 +3101,7 @@ impl<'a, 'gcx, 'tcx> FnCtxt<'a, 'gcx, 'tcx> {
                         _ => None
                     }
                 });
-                opt_ty.unwrap_or_else(
-                    || tcx.mk_float_var(self.next_float_var_id()))
+                opt_ty.unwrap_or_else(|| self.next_float_var())
             }
             ast::LitKind::Bool(_) => tcx.types.bool,
             ast::LitKind::Err(_) => tcx.types.err,
@@ -3150,25 +3142,13 @@ impl<'a, 'gcx, 'tcx> FnCtxt<'a, 'gcx, 'tcx> {
         }
 
         if let Some(mut err) = self.demand_suptype_diag(expr.span, expected_ty, ty) {
-            // Add help to type error if this is an `if` condition with an assignment.
-            if let (ExpectIfCondition, &ExprKind::Assign(ref lhs, ref rhs))
-                 = (expected, &expr.node)
-            {
-                let msg = "try comparing for equality";
-                if let (Ok(left), Ok(right)) = (
-                    self.tcx.sess.source_map().span_to_snippet(lhs.span),
-                    self.tcx.sess.source_map().span_to_snippet(rhs.span))
-                {
-                    err.span_suggestion(
-                        expr.span,
-                        msg,
-                        format!("{} == {}", left, right),
-                        Applicability::MaybeIncorrect);
-                } else {
-                    err.help(msg);
-                }
+            if self.is_assign_to_bool(expr, expected_ty) {
+                // Error reported in `check_assign` so avoid emitting error again.
+                // FIXME(centril): Consider removing if/when `if` desugars to `match`.
+                err.delay_as_bug();
+            } else {
+                err.emit();
             }
-            err.emit();
         }
         ty
     }
@@ -3231,7 +3211,7 @@ impl<'a, 'gcx, 'tcx> FnCtxt<'a, 'gcx, 'tcx> {
             Some(ret) => ret,
             None => return Vec::new()
         };
-        let expect_args = self.fudge_regions_if_ok(&RegionVariableOrigin::Coercion(call_span), || {
+        let expect_args = self.fudge_inference_if_ok(|| {
             // Attempt to apply a subtyping relationship between the formal
             // return type (likely containing type variables if the function
             // is polymorphic) and the expected return type.
@@ -3339,7 +3319,7 @@ impl<'a, 'gcx, 'tcx> FnCtxt<'a, 'gcx, 'tcx> {
                        opt_else_expr: Option<&'gcx hir::Expr>,
                        sp: Span,
                        expected: Expectation<'tcx>) -> Ty<'tcx> {
-        let cond_ty = self.check_expr_meets_expectation_or_error(cond_expr, ExpectIfCondition);
+        let cond_ty = self.check_expr_has_type_or_error(cond_expr, self.tcx.types.bool);
         let cond_diverges = self.diverges.get();
         self.diverges.set(Diverges::Maybe);
 
@@ -4424,34 +4404,7 @@ impl<'a, 'gcx, 'tcx> FnCtxt<'a, 'gcx, 'tcx> {
                 tcx.types.never
             }
             ExprKind::Assign(ref lhs, ref rhs) => {
-                let lhs_ty = self.check_expr_with_needs(&lhs, Needs::MutPlace);
-
-                let rhs_ty = self.check_expr_coercable_to_type(&rhs, lhs_ty);
-
-                match expected {
-                    ExpectIfCondition => {
-                        self.tcx.sess.delay_span_bug(lhs.span, "invalid lhs expression in if;\
-                                                                expected error elsehwere");
-                    }
-                    _ => {
-                        // Only check this if not in an `if` condition, as the
-                        // mistyped comparison help is more appropriate.
-                        if !lhs.is_place_expr() {
-                            struct_span_err!(self.tcx.sess, expr.span, E0070,
-                                                "invalid left-hand side expression")
-                                .span_label(expr.span, "left-hand of expression not valid")
-                                .emit();
-                        }
-                    }
-                }
-
-                self.require_type_is_sized(lhs_ty, lhs.span, traits::AssignmentLhsSized);
-
-                if lhs_ty.references_error() || rhs_ty.references_error() {
-                    tcx.types.err
-                } else {
-                    tcx.mk_unit()
-                }
+                self.check_assign(expr, expected, lhs, rhs)
             }
             ExprKind::If(ref cond, ref then_expr, ref opt_else_expr) => {
                 self.check_then_else(&cond, then_expr, opt_else_expr.as_ref().map(|e| &**e),
@@ -4752,6 +4705,51 @@ impl<'a, 'gcx, 'tcx> FnCtxt<'a, 'gcx, 'tcx> {
         }
     }
 
+    /// Type check assignment expression `expr` of form `lhs = rhs`.
+    /// The expected type is `()` and is passsed to the function for the purposes of diagnostics.
+    fn check_assign(
+        &self,
+        expr: &'gcx hir::Expr,
+        expected: Expectation<'tcx>,
+        lhs: &'gcx hir::Expr,
+        rhs: &'gcx hir::Expr,
+    ) -> Ty<'tcx> {
+        let lhs_ty = self.check_expr_with_needs(&lhs, Needs::MutPlace);
+        let rhs_ty = self.check_expr_coercable_to_type(&rhs, lhs_ty);
+
+        let expected_ty = expected.coercion_target_type(self, expr.span);
+        if expected_ty == self.tcx.types.bool {
+            // The expected type is `bool` but this will result in `()` so we can reasonably
+            // say that the user intended to write `lhs == rhs` instead of `lhs = rhs`.
+            // The likely cause of this is `if foo = bar { .. }`.
+            let actual_ty = self.tcx.mk_unit();
+            let mut err = self.demand_suptype_diag(expr.span, expected_ty, actual_ty).unwrap();
+            let msg = "try comparing for equality";
+            let left = self.tcx.sess.source_map().span_to_snippet(lhs.span);
+            let right = self.tcx.sess.source_map().span_to_snippet(rhs.span);
+            if let (Ok(left), Ok(right)) = (left, right) {
+                let help = format!("{} == {}", left, right);
+                err.span_suggestion(expr.span, msg, help, Applicability::MaybeIncorrect);
+            } else {
+                err.help(msg);
+            }
+            err.emit();
+        } else if !lhs.is_place_expr() {
+            struct_span_err!(self.tcx.sess, expr.span, E0070,
+                                "invalid left-hand side expression")
+                .span_label(expr.span, "left-hand of expression not valid")
+                .emit();
+        }
+
+        self.require_type_is_sized(lhs_ty, lhs.span, traits::AssignmentLhsSized);
+
+        if lhs_ty.references_error() || rhs_ty.references_error() {
+            self.tcx.types.err
+        } else {
+            self.tcx.mk_unit()
+        }
+    }
+
     // Finish resolving a path in a struct expression or pattern `S::A { .. }` if necessary.
     // The newly resolved definition is written into `type_dependent_defs`.
     fn finish_resolving_struct_path(&self,
@@ -4804,10 +4802,10 @@ impl<'a, 'gcx, 'tcx> FnCtxt<'a, 'gcx, 'tcx> {
                 (self.to_ty(qself), qself, segment)
             }
         };
-        if let Some(cached_def) = self.tables.borrow().type_dependent_defs().get(hir_id) {
+        if let Some(cached_def) = self.tables.borrow().type_dependent_def(hir_id) {
             // Return directly on cache hit. This is useful to avoid doubly reporting
             // errors with default match binding modes. See #44614.
-            return (*cached_def, Some(ty), slice::from_ref(&**item_segment))
+            return (cached_def, Some(ty), slice::from_ref(&**item_segment))
         }
         let item_name = item_segment.ident;
         let def = match self.resolve_ufcs(span, item_name, ty, hir_id) {
