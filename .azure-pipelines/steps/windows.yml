@@ -11,7 +11,7 @@ steps:
 
 - script: |
     set MSYS_PATH=%CD%\build\msys64
-    choco install msys2 --params="/InstallDir:C:\%MSYS_PATH% /NoPath" -y
+    choco install msys2 --params="/InstallDir:%MSYS_PATH% /NoPath" -y
     set PATH=%MSYS_PATH%\usr\bin;%PATH%
     pacman -S --noconfirm --needed base-devel ca-certificates make diffutils tar 
     IF "%MINGW_URL%"=="" (
@@ -22,6 +22,7 @@ steps:
     rev --help
     where make
 
+    echo ##vso[task.setvariable variable=MSYS_PATH]%MSYS_PATH%
     echo ##vso[task.prependpath]%MSYS_PATH%\usr\bin
   displayName: Install msys2
 
@@ -88,7 +89,7 @@ steps:
     echo Find mingw
     set PATH | findstr /i msys
     set PATH | findstr /i mingw
-    echo ##vso[task.prependpath]C:\msys64\mingw%MSYS_BITS%\bin
+    echo ##vso[task.prependpath]%MSYS_PATH%\mingw%MSYS_BITS%\bin
   condition: and(succeeded(), eq(variables['MINGW_URL'],''))
   displayName: Add MinGW to path
 
