@@ -52,8 +52,8 @@ jobs:
       set -x
       git submodule
       export SUBMODULES_EXCLUDES=$(git submodule | grep -Eow 'src/[^ ]+' | sed 's/\(.*\)/--exclude=\1\/\.git/')
-      $TAR_COMMAND --exclude=.git --exclude=build $SUBMODULES_EXCLUDES -cf $TEMP/drop.tar .
-      $TAR_COMMAND --append --file=$TEMP/drop.tar build
+      $TAR_COMMAND --dereference --exclude=.git --exclude=citools $SUBMODULES_EXCLUDES -cf $TEMP/drop.tar .
+      $TAR_COMMAND --append --file=$TEMP/drop.tar citools
   - task: PublishPipelineArtifact@0
     inputs:
       artifactName: $(System.JobDisplayName)
@@ -77,7 +77,7 @@ jobs:
     vmImage: 'vs2017-win2016'
   steps:
   - script: |
-      set MSYS_PATH=%CD%\build\tools\msys64
+      set MSYS_PATH=%CD%\citools\msys64
       set PATH=%MSYS_PATH%\usr\bin;%PATH%
       where rev
       rev --help
@@ -113,7 +113,7 @@ jobs:
   - script: |
       # powershell -Command "iwr -outf LLVM-7.0.0-win64.exe https://s3-us-west-1.amazonaws.com/rust-lang-ci2/rust-ci-mirror/LLVM-7.0.0-win64.exe"
       # .\LLVM-7.0.0-win64.exe /S /NCRC /D=C:\clang-rust
-      set CLANG_DIR=%CD%\build\tools\clang-rust
+      set CLANG_DIR=%CD%\citools\clang-rust
       set RUST_CONFIGURE_ARGS=%RUST_CONFIGURE_ARGS% --set llvm.clang-cl=%CLANG_DIR%\bin\clang-cl.exe
       echo ##vso[task.setvariable variable=RUST_CONFIGURE_ARGS]%RUST_CONFIGURE_ARGS%
     condition: and(succeeded(), eq(variables['MINGW_URL'],''))
