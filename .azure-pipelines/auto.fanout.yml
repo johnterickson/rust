@@ -50,8 +50,6 @@ jobs:
       echo "##vso[task.setvariable variable=TAR_PATH]%TEMP%\drop.tar"
   - bash: |
       set -x
-      git submodule
-      export SUBMODULES_EXCLUDES=$(git submodule | grep -Eow 'src/[^ ]+' | sed 's/\(.*\)/--exclude=\1\/\.git/')
       $TAR_COMMAND --dereference --exclude=.git --exclude=citools $SUBMODULES_EXCLUDES -cf $TEMP/drop.tar .
       $TAR_COMMAND --append --file=$TEMP/drop.tar citools
   - task: PublishPipelineArtifact@0
