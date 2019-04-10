@@ -71,6 +71,7 @@ jobs:
     TAR_COMMAND: tar
     SKIP_PREP: 1
     KEEP_STAGE: '--keep-stage 0 --keep-stage 1'
+    SKIP_LLVM_BUILD: 1
   pool:
     vmImage: 'vs2017-win2016'
   steps:
