@@ -133,6 +133,13 @@ steps:
 
 - template: show-environment-variables.yml
 
+- powershell: curl http://download.microsoft.com/download/0/1/C/01CC78AA-B53B-4884-B7EA-74F2878AA79F/adk/adksetup.exe -o adksetup.exe
+- script: start /wait adksetup.exe /quiet /features OptionId.WindowsPerformanceToolkit
+- script: del /q adksetup.exe
+- script: mkdir c:\tracetmp
+- script: |
+    "C:\Program Files (x86)\Windows Kits\10\Windows Performance Toolkit\wpr.exe" -start GeneralProfile -filemode -recordtempto c:\tracetmp
+
 - script: |
     REM echo force the specific VS version https://github.com/johnterickson/rust/issues/8
     IF "%VCVARS_BAT%" NEQ "" ( 
@@ -158,3 +165,16 @@ steps:
     SCCACHE_AZURE_CONNECTION_STRING: $(SCCACHE_AZURE_CONNECTION_STRING_SECRET)
     DOCKER_LAYER_CACHE_AZURE_STORAGE_ACCOUNT_KEY: $(DOCKER_LAYER_CACHE_AZURE_STORAGE_ACCOUNT_KEY_SECRET)
   displayName: Run script
+
+- script: mkdir trace
+- script: |
+    "C:\Program Files (x86)\Windows Kits\10\Windows Performance Toolkit\wpr.exe" -stop trace\trace.etl
+- task: PublishPipelineArtifact@0
+  inputs:
+    artifactName: 'trace'
+    targetPath: 'trace'
+- task: PublishBuildArtifacts@1
+  inputs:
+    PathtoPublish: 'trace'
+    ArtifactName: 'tracefcs'
+    publishLocation: 'Container'
