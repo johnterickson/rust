@@ -140,13 +140,14 @@ steps:
     logman create counter BuildCounters -si 00:05 -f csv -o %CD%\trace\perf.csv
 - script: |
     echo ON
-    logman update BuildCounters -c "\Processor(_Total)\% Processor Time"
+    logman update BuildCounters -c "\Processor(_Total)\%% Processor Time"
 - script: |
     echo ON
     logman start BuildCounters
 - script: |
     echo ON
     logman query
+    logman query BuildCounters
 
 - script: |
     REM echo force the specific VS version https://github.com/johnterickson/rust/issues/8
