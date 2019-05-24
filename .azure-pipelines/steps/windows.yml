@@ -133,18 +133,14 @@ steps:
 
 - template: show-environment-variables.yml
 
-- script: mkdir %CD%\trace
-# - powershell: curl http://download.microsoft.com/download/0/1/C/01CC78AA-B53B-4884-B7EA-74F2878AA79F/adk/adksetup.exe -o adksetup.exe
-# - script: start /wait adksetup.exe /quiet /features OptionId.WindowsPerformanceToolkit
-# - script: del /q adksetup.exe
-# - script: mkdir c:\tracetmp
-# - script: |
-#     "C:\Program Files (x86)\Windows Kits\10\Windows Performance Toolkit\wpr.exe" -start GeneralProfile -filemode -recordtempto c:\tracetmp
-# - script: |
-#     "C:\Program Files (x86)\Windows Kits\10\Windows Performance Toolkit\wpr.exe" -status
-- script: logman create counter BuildCounters -si 00:05 -f csv -o %CD%\trace\perf.csv
-- script: logman update BuildCounters -c "\Processor(_Total)\% Processor Time"
-- script: logman start BuildCounters
+- script: |
+    mkdir %CD%\trace
+- script: |
+    logman create counter BuildCounters -si 00:05 -f csv -o %CD%\trace\perf.csv
+- script: |
+    logman update BuildCounters -c "\Processor(_Total)\% Processor Time"
+- script: |
+    logman start BuildCounters
 
 - script: |
     REM echo force the specific VS version https://github.com/johnterickson/rust/issues/8
@@ -172,9 +168,8 @@ steps:
     DOCKER_LAYER_CACHE_AZURE_STORAGE_ACCOUNT_KEY: $(DOCKER_LAYER_CACHE_AZURE_STORAGE_ACCOUNT_KEY_SECRET)
   displayName: Run script
 
-- script: logman stop BuildCounters
-# - script: |
-#     "C:\Program Files (x86)\Windows Kits\10\Windows Performance Toolkit\wpr.exe" -stop trace\trace.etl
+- script: |
+    logman stop BuildCounters
 - task: PublishPipelineArtifact@0
   inputs:
     artifactName: "trace pa $(System.JobDisplayName)"
