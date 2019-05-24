@@ -136,11 +136,17 @@ steps:
 - script: |
     mkdir %CD%\trace
 - script: |
+    echo ON
     logman create counter BuildCounters -si 00:05 -f csv -o %CD%\trace\perf.csv
 - script: |
+    echo ON
     logman update BuildCounters -c "\Processor(_Total)\% Processor Time"
 - script: |
+    echo ON
     logman start BuildCounters
+- script: |
+    echo ON
+    logman query
 
 - script: |
     REM echo force the specific VS version https://github.com/johnterickson/rust/issues/8
@@ -154,8 +160,8 @@ steps:
 
     if not exist D:\cache\rustsrc\NUL mkdir D:\cache\rustsrc
     
-    sh src/ci/init_repo.sh . /d/cache/rustsrc
-    sh src/ci/run.sh
+    REM sh src/ci/init_repo.sh . /d/cache/rustsrc
+    REM sh src/ci/run.sh
   env:      
     CI: true
     CI_JOB_NAME: $(System.JobDisplayName)
